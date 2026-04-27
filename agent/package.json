@@ -1,0 +1,28 @@
+{
+  "name": "vopro-agent",
+  "version": "0.1.0",
+  "description": "Vopro desktop capture agent (Electron + TypeScript)",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json -w & electron .",
+    "start": "npm run build && electron .",
+    "test": "vitest run",
+    "lint": "eslint . --ext .ts"
+  },
+  "dependencies": {
+    "electron-store": "^10.0.0",
+    "node-fetch": "^3.3.2",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/uuid": "^10.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.13.0",
+    "@typescript-eslint/parser": "^8.13.0",
+    "electron": "^33.0.0",
+    "eslint": "^9.14.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  }
+}

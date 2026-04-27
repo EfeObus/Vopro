@@ -1,0 +1,66 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+**/vendor/bundle/
+**/.bundle/
+backend/vendor/
+backend/.bundle/
+
+# Builds
+dist/
+build/
+out/
+*.log
+.next/
+.cache/
+coverage/
+public/assets/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.eggs/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Rails
+backend/log/*
+backend/tmp/*
+backend/storage/*
+backend/.byebug_history
+backend/config/master.key
+backend/config/credentials/*.key
+
+# Database
+*.sqlite3
+*.sqlite3-journal
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Electron
+agent/release/
+agent/dist/
+
+# OS
+.DS_Store
+
+# Vopro local data
+data/
+*.vopro-events

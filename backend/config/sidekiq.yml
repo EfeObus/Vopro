@@ -1,0 +1,14 @@
+:concurrency: 5
+:queues:
+  - [critical, 4]
+  - [default, 2]
+  - [low, 1]
+
+:scheduler:
+  schedule:
+    detect_patterns:
+      cron: "*/15 * * * *"
+      class: DetectPatternsJob
+    refresh_sops:
+      cron: "0 * * * *"
+      class: RefreshSopJob

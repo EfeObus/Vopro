@@ -1,0 +1,21 @@
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+  username: <%= ENV.fetch("DATABASE_USERNAME", "vopro") %>
+  password: <%= ENV.fetch("DATABASE_PASSWORD", "vopro") %>
+  host: <%= ENV.fetch("DATABASE_HOST", "localhost") %>
+  port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
+
+development:
+  <<: *default
+  database: vopro_development
+  url: <%= ENV["DATABASE_URL"] %>
+
+test:
+  <<: *default
+  database: vopro_test
+
+production:
+  <<: *default
+  url: <%= ENV["DATABASE_URL"] %>
