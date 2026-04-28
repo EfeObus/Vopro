@@ -34,6 +34,30 @@ RSpec.describe SopExporter do
       expect(bytes.byteslice(0, 4)).to eq("%PDF")
       expect(bytes.bytesize).to be > 200
     end
+
+    it "renders without raising when steps use camelCase keys or unicode symbols" do
+      unicode_sop = instance_double(
+        Sop,
+        id: sop.id,
+        title: "Pricing tiers ≥ Pro",
+        description: "Unicode-heavy body.",
+        status: "draft",
+        tags: [],
+        confidence: 0.5,
+        steps: [
+          {
+            "title" => "Branch",
+            "description" => "",
+            "decision" => {
+              "question" => "Is invoice ≥ \$25,000?",
+              "branches" => [{ "label" => "Yes — expedited", "goToStepId" => "x" }],
+            },
+          },
+        ],
+      )
+
+      expect { described_class.call(unicode_sop, format: :pdf) }.not_to raise_error
+    end
   end
 
   describe ".call format: :markdown" do

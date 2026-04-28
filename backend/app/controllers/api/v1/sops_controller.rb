@@ -74,7 +74,7 @@ module Api
         response.headers["Cache-Control"] = "private, max-age=0, must-revalidate"
         response.headers["Vary"] = "Authorization"
 
-        body = SopExporter.call(@sop, format: fmt_sym)
+        raw_body = SopExporter.call(@sop, format: fmt_sym)
         audit("sop.export", subject_id: @sop.id, metadata: { format: fmt_param })
 
         extension =
@@ -84,13 +84,25 @@ module Api
           when :pdf then "pdf"
           end
 
-        base_name = @sop.title.to_s.parameterize.presence || @sop.id.to_s
+        base_name =
+          begin
+            @sop.title.to_s.encode("UTF-8").parameterize.presence
+          rescue ArgumentError, Encoding::CompatibilityError
+            nil
+          end || @sop.id.to_s
 
         mime =
           case fmt_sym
           when :markdown then "text/markdown; charset=utf-8"
           when :json then "application/json; charset=utf-8"
           when :pdf then "application/pdf"
+          end
+
+        body =
+          if fmt_sym == :pdf
+            raw_body.to_s.b
+          else
+            raw_body
           end
 
         send_data body,
