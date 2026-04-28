@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react';
 import path from 'node:path';
 
 export default defineConfig({
+  // Load `.env` from the monorepo root so `VITE_*` matches backend `.env` instead
+  // of requiring a duplicate `frontend/.env`.
+  envDir: path.resolve(__dirname, '..'),
   plugins: [react()],
   resolve: {
     alias: {

@@ -7,6 +7,9 @@ node_modules/
 backend/vendor/
 backend/.bundle/
 
+# TypeScript incremental
+*.tsbuildinfo
+
 # Builds
 dist/
 build/
