@@ -120,8 +120,11 @@ function DefaultFallback({
  * fallback. Without this, async rejections silently disappear into the
  * console.
  */
+let globalRejectionHookInstalled = false;
+
 export function installGlobalRejectionHandler(): void {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined' || globalRejectionHookInstalled) return;
+  globalRejectionHookInstalled = true;
   window.addEventListener('unhandledrejection', (event) => {
     const reason = event.reason;
     if (reason instanceof Error) {

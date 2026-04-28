@@ -20,7 +20,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         RootErrorBoundary renders the user-facing recovery UI. */}
     <SentryErrorBoundary fallback={<div className="p-8">Telemetry boundary.</div>}>
       <RootErrorBoundary>
-        <BrowserRouter>
+        <BrowserRouter
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true,
+          }}
+        >
           <AuthProvider>
             <ToasterProvider>
               <App />

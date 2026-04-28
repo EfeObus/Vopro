@@ -61,6 +61,6 @@ agent/dist/
 # OS
 .DS_Store
 
-# Vopro local data
-data/
+# Vopro local data (repo root only — do not use bare `data/` or it ignores frontend/src/data/)
+/data/
 *.vopro-events

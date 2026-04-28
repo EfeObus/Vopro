@@ -22,7 +22,12 @@ module Vopro
 
     config.middleware.insert_before 0, Rack::Cors do
       allow do
-        origins ENV.fetch("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+        # localhost and 127.0.0.1 are different browser origins — include both
+        # so Vite dev works whether you open http://localhost:5173 or ://127.0.0.1:5173.
+        origins ENV.fetch(
+          "ALLOWED_ORIGINS",
+          "http://localhost:5173,http://127.0.0.1:5173",
+        ).split(",").map(&:strip).reject(&:empty?)
         resource "*",
                  headers: :any,
                  expose: %w[Authorization],

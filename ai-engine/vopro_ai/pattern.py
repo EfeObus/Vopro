@@ -146,7 +146,7 @@ def _make_title(gram: tuple[str, ...]) -> str:
     actions = []
     for step in gram:
         try:
-            kind, app, target = [p.strip() for p in step.split(" | ", 2)]
+            kind, app, target = tuple(p.strip() for p in step.split(" | ", 2))
         except ValueError:
             continue
         if app and app not in apps:

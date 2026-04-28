@@ -133,7 +133,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
         429: "rate_limited",
     }
     code = code_map.get(exc.status_code, f"http_{exc.status_code}")
-    detail = exc.detail if isinstance(exc.detail, (dict, list)) else None
+    detail = exc.detail if isinstance(exc.detail, dict | list) else None
     message = exc.detail if isinstance(exc.detail, str) else "Request failed"
     return _error_response(
         status_code=exc.status_code,
