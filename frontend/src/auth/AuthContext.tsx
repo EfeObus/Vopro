@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
+import { getPublicApiBase } from '@/lib/apiBase';
+
 const TOKEN_KEY = 'vopro.token';
 const USER_KEY = 'vopro.user';
 
@@ -50,9 +52,20 @@ interface AuthContextValue {
   logout: () => void;
 }
 
+function loginErrorMessage(body: Record<string, unknown> | null, status: number): string {
+  if (!body) return `Login failed (${status})`;
+  const err = body.error;
+  if (typeof err === 'string') return err;
+  if (err && typeof err === 'object' && 'message' in err) {
+    const m = (err as { message?: unknown }).message;
+    if (typeof m === 'string' && m.trim()) return m;
+  }
+  return `Login failed (${status})`;
+}
+
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-const BASE = import.meta.env.VITE_API_BASE_URL ?? '';
+const BASE = getPublicApiBase();
 
 function safeRead<T>(key: string): T | null {
   if (typeof window === 'undefined') return null;
@@ -83,8 +96,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ email, password }),
     });
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.error || `Login failed (${res.status})`);
+      const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+      const msg = loginErrorMessage(body, res.status);
+      throw new Error(msg);
     }
     const body = (await res.json()) as { token: string; user: AuthUser };
     setToken(body.token);
@@ -110,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Best-effort server-side revocation. We don't await it so logout is
     // instant in the UI even when offline; the local state is already cleared.
-    if (currentToken && BASE) {
+    if (currentToken) {
       fetch(`${BASE}/api/v1/auth/logout`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${currentToken}` },
@@ -151,7 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = null;
     }
-    if (!token || !BASE) return;
+    if (!token) return;
 
     const exp = decodeExp(token);
     if (!exp) return;
@@ -190,7 +204,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // (called by the api client on 401) wipes local state.
   useEffect(() => {
     if (!isHydrating) return;
-    if (!token || !BASE) {
+    if (!token) {
       setIsHydrating(false);
       return;
     }
