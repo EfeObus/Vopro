@@ -28,6 +28,19 @@ RSpec.describe "Api::V1::Workflows", type: :request do
 
       expect(response).to have_http_status(:accepted)
     end
+
+    it "returns 503 with redis_unavailable when Redis cannot be reached" do
+      workflow = create(:workflow, workspace: workspace)
+      allow(GenerateSopJob).to receive(:perform_async).and_raise(
+        RedisClient::CannotConnectError.new("Connection refused - connect(2) for 127.0.0.1:6379"),
+      )
+
+      post "/api/v1/workflows/#{workflow.id}/generate_sop", headers: headers
+
+      expect(response).to have_http_status(:service_unavailable)
+      body = JSON.parse(response.body)
+      expect(body.dig("error", "code")).to eq("redis_unavailable")
+    end
   end
 
   describe "POST /api/v1/workflows/:id/dismiss" do

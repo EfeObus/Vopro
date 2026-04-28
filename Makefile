@@ -1,4 +1,4 @@
-.PHONY: up down logs ps build test lint frontend backend ai agent setup clean
+.PHONY: up down logs ps build test lint frontend backend ai agent setup clean redis
 
 up:
 	docker compose up -d
@@ -8,6 +8,11 @@ up:
 
 down:
 	docker compose down
+
+# Redis only — for manual Rails+Vite dev when you need Sidekiq jobs but not full `make up`.
+redis:
+	docker compose up -d redis
+	@echo "Redis → localhost:6379 — run: cd backend && bundle exec sidekiq"
 
 logs:
 	docker compose logs -f --tail=100

@@ -379,6 +379,10 @@ Response `202`:
 { "status": "queued" }
 ```
 
+If Sidekiq cannot reach Redis (enqueue fails), the API returns **`503`** with
+`error.code` **`redis_unavailable`** instead of a generic `500`. Start Redis
+and a Sidekiq worker before calling this endpoint.
+
 ### `POST /workflows/:id/dismiss`
 
 Marks a detected workflow as not interesting. It will not be re-surfaced.

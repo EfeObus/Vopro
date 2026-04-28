@@ -5,6 +5,11 @@ class ApplicationController < ActionController::API
   # through to `handle_internal_error` so we never leak a Ruby trace.
   rescue_from StandardError,                       with: :handle_internal_error
 
+  # Sidekiq jobs (`perform_async`) and Redis-backed caches fail fast when Redis
+  # is down — surface a clear 503 instead of a generic 500 (common local-dev gap).
+  rescue_from RedisClient::CannotConnectError,     with: :handle_redis_unavailable
+  rescue_from Redis::CannotConnectError,           with: :handle_redis_unavailable
+
   rescue_from ActiveRecord::RecordNotFound,        with: :handle_not_found
   rescue_from ActiveRecord::RecordInvalid,         with: :handle_unprocessable
   rescue_from ActiveRecord::RecordNotUnique,       with: :handle_conflict
@@ -109,6 +114,35 @@ class ApplicationController < ActionController::API
       status: :conflict,
       code: "conflict",
       message: error.message.presence || "Resource state conflict",
+    )
+  end
+
+  def handle_redis_unavailable(error)
+    Rails.logger.error("[#{request.request_id}] #{error.class}: #{error.message}")
+
+    hint =
+      "Start Redis (e.g. `redis-server`, `brew services start redis`, or `docker compose up -d redis`), " \
+      "then run a Sidekiq worker: `cd backend && bundle exec sidekiq`."
+
+    message =
+      if Rails.env.production?
+        "Background jobs are temporarily unavailable. Please try again shortly."
+      else
+        "#{error.class}: #{error.message}. #{hint}"
+      end
+
+    details =
+      if Rails.env.production?
+        nil
+      else
+        { hint: hint }
+      end
+
+    render_error(
+      status: :service_unavailable,
+      code: "redis_unavailable",
+      message: message,
+      details: details,
     )
   end
 

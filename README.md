@@ -137,6 +137,14 @@ Frontend will be at <http://localhost:5173>, API at <http://localhost:3000>.
 
 ### Manual install
 
+Redis must be running for Sidekiq background jobs (`generate_sop`, event ingestion, etc.). Start **`redis-server`** (or `brew services start redis`, or `docker compose up -d redis`), then run a worker:
+
+```bash
+cd backend && bundle exec sidekiq
+```
+
+Run Rails and Sidekiq in separate terminals alongside Redis.
+
 ```bash
 # Frontend
 cd frontend && npm install && npm run dev
