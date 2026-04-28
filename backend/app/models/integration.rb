@@ -7,6 +7,8 @@ class Integration < ApplicationRecord
   validates :provider, inclusion: { in: PROVIDERS }
   validates :status, inclusion: { in: STATUSES }
 
-  # `secrets` should be encrypted at rest in production
-  encrypts :secrets if respond_to?(:encrypts)
+  # Encrypted at rest when AR encryption keys are configured (production/staging).
+  # CI and fresh clones often omit keys until `bin/rails db:encryption:init` —
+  # skipping `encrypts` avoids 500s on save without weakening prod when keys exist.
+  encrypts :secrets if respond_to?(:encrypts) && ENV["AR_ENCRYPTION_PRIMARY_KEY"].present?
 end

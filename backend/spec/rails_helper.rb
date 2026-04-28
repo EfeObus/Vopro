@@ -1,6 +1,7 @@
 require "spec_helper"
 
 ENV["RAILS_ENV"] ||= "test"
+
 require_relative "../config/environment"
 abort("Rails is running in production!") if Rails.env.production?
 
@@ -23,4 +24,10 @@ RSpec.configure do |config|
 
   config.include FactoryBot::Syntax::Methods
   config.include AuthHelpers, type: :request
+
+  # Rack::Attack counters live in Redis across examples — login throttle + api/ip
+  # exhaust limits so unrelated specs see 429.
+  config.before do
+    Rack::Attack.cache.store.clear if defined?(Rack::Attack)
+  end
 end
