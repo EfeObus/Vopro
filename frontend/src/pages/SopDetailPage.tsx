@@ -27,9 +27,9 @@ export default function SopDetailPage() {
   const { id } = useParams();
   const [sop, setSop] = useState<Sop | undefined>();
   const [editing, setEditing] = useState(false);
-  const [busyAction, setBusyAction] = useState<'publish' | 'archive' | 'export' | 'save' | null>(
-    null,
-  );
+  const [busyAction, setBusyAction] = useState<
+    'publish' | 'archive' | 'export-md' | 'export-pdf' | 'save' | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState('');
   const [draftDescription, setDraftDescription] = useState('');
@@ -107,15 +107,25 @@ export default function SopDetailPage() {
     }
   }
 
-  async function exportSop() {
+  function slugifyFilename(title: string, fallbackId: string): string {
+    const raw = title
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/gi, '-')
+      .replace(/^-+|-+$/g, '');
+    return raw.slice(0, 120) || fallbackId;
+  }
+
+  async function exportSop(format: 'markdown' | 'pdf') {
     if (!sop) return;
-    setBusyAction('export');
+    setBusyAction(format === 'markdown' ? 'export-md' : 'export-pdf');
     try {
-      const blob = await api.exportSop(sop.id, 'markdown');
+      const blob = await api.exportSop(sop.id, format);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${sop.id}.md`;
+      const ext = format === 'markdown' ? 'md' : 'pdf';
+      a.download = `${slugifyFilename(sop.title, sop.id)}.${ext}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -170,9 +180,25 @@ export default function SopDetailPage() {
         subtitle={sop.description}
         actions={
           <div className="flex items-center gap-2">
-            <button onClick={exportSop} disabled={busyAction === 'export'} className="btn-outline">
+            <button
+              type="button"
+              onClick={() => exportSop('markdown')}
+              disabled={busyAction === 'export-md' || busyAction === 'export-pdf'}
+              className="btn-outline"
+              aria-label="Export as Markdown"
+            >
               <Download className="size-4" />
-              {busyAction === 'export' ? 'Exporting…' : 'Export'}
+              {busyAction === 'export-md' ? 'Markdown…' : 'Markdown'}
+            </button>
+            <button
+              type="button"
+              onClick={() => exportSop('pdf')}
+              disabled={busyAction === 'export-md' || busyAction === 'export-pdf'}
+              className="btn-outline"
+              aria-label="Export as PDF"
+            >
+              <Download className="size-4" />
+              {busyAction === 'export-pdf' ? 'PDF…' : 'PDF'}
             </button>
             {sop.status !== 'published' && (
               <button

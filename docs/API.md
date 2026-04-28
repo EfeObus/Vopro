@@ -346,9 +346,20 @@ Marks the SOP as `published`. Records an audit log row.
 
 Marks the SOP as `archived`.
 
-### `GET /sops/:id/export?format=markdown|json|html`
+### `GET /sops/:id/export?format=markdown|json|pdf`
 
-Returns a rendered export. Markdown is the default.
+Returns a downloadable export.
+
+| `format` | Default | Response |
+|----------|---------|----------|
+| `markdown` or `md` | ✓ | `text/markdown` — portable editing |
+| `json` | | `application/json` — structured snapshot |
+| `pdf` | | `application/pdf` — printable document (Prawn-rendered server-side) |
+
+The download filename is derived from the SOP title (`parameterize`) when possible.
+
+Responses include `Cache-Control: private, max-age=0, must-revalidate` and `Vary: Authorization`
+so authenticated downloads are not cached as shared content.
 
 ---
 

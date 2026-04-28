@@ -45,7 +45,8 @@ describe('SopDetailPage', () => {
       expect(screen.getByRole('heading', { name: draft.title })).toBeInTheDocument();
     });
 
-    expect(screen.getByRole('button', { name: /export/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /export as markdown/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /export as pdf/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /publish/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /archive/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /edit/i })).toBeInTheDocument();

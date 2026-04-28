@@ -99,6 +99,24 @@ RSpec.describe "Api::V1::Sops", type: :request do
       get "/api/v1/sops/#{sop.id}/export", headers: headers
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("# Onboard customer")
+      expect(response.headers["Cache-Control"]).to include("private")
+    end
+
+    it "returns a valid PDF when format=pdf" do
+      sop = create(:sop, workspace: workspace, owner: user, title: "PDF Export Test")
+      get "/api/v1/sops/#{sop.id}/export", params: { format: "pdf" }, headers: headers
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to start_with("%PDF")
+      expect(response.headers["Content-Type"]).to include("application/pdf")
+      expect(response.headers["Content-Disposition"]).to match(/pdf-export-test\.pdf/)
+    end
+
+    it "rejects unknown export formats" do
+      sop = create(:sop, workspace: workspace, owner: user)
+      get "/api/v1/sops/#{sop.id}/export", params: { format: "exe" }, headers: headers
+      expect(response).to have_http_status(:bad_request)
+      json = JSON.parse(response.body)
+      expect(json.dig("error", "code")).to eq("invalid_parameter")
     end
   end
 

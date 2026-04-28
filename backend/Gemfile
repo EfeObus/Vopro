@@ -21,6 +21,9 @@ gem "sentry-ruby", "~> 5.17"
 gem "sentry-rails", "~> 5.17"
 gem "sentry-sidekiq", "~> 5.17"
 gem "stackprof", require: false
+gem "prawn", "~> 2.4"
+# Ruby 3.1+ — `matrix` was moved out of stdlib; Prawn pulls it transitively at runtime.
+gem "matrix"
 gem "tzinfo-data", platforms: %i[mingw mswin x64_mingw jruby]
 gem "bootsnap", require: false
 

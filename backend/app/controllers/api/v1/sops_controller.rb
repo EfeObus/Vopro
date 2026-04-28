@@ -56,13 +56,46 @@ module Api
       end
 
       def export
-        format = params.fetch(:format, "markdown")
-        body = SopExporter.call(@sop, format: format.to_sym)
-        audit("sop.export", subject_id: @sop.id, metadata: { format: format })
+        fmt_param = params.fetch(:format, "markdown").to_s
+        fmt_sym =
+          case fmt_param
+          when "markdown", "md" then :markdown
+          when "json" then :json
+          when "pdf" then :pdf
+          else
+            return render_error(
+              status: :bad_request,
+              code: "invalid_parameter",
+              message: "Allowed export formats: markdown, json, pdf",
+              details: { parameter: "format", received: fmt_param },
+            )
+          end
+
+        response.headers["Cache-Control"] = "private, max-age=0, must-revalidate"
+        response.headers["Vary"] = "Authorization"
+
+        body = SopExporter.call(@sop, format: fmt_sym)
+        audit("sop.export", subject_id: @sop.id, metadata: { format: fmt_param })
+
+        extension =
+          case fmt_sym
+          when :markdown then "md"
+          when :json then "json"
+          when :pdf then "pdf"
+          end
+
+        base_name = @sop.title.to_s.parameterize.presence || @sop.id.to_s
+
+        mime =
+          case fmt_sym
+          when :markdown then "text/markdown; charset=utf-8"
+          when :json then "application/json; charset=utf-8"
+          when :pdf then "application/pdf"
+          end
 
         send_data body,
-                  filename: "#{@sop.id}.#{format}",
-                  type: format == "pdf" ? "application/pdf" : "text/plain",
+                  filename: "#{base_name}.#{extension}",
+                  type: mime,
                   disposition: "attachment"
       end
 
