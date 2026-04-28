@@ -45,8 +45,10 @@ class Rack::Attack
   end
 
   # General API: 600 requests / 5 min / IP — generous, but stops scraping.
+  # Never throttle CORS preflight (OPTIONS); those must reach Rack::Cors cleanly
+  # or the browser reports “No Access-Control-Allow-Origin” on failed preflight.
   throttle("api/ip", limit: 600, period: 5.minutes) do |req|
-    req.ip if req.path.start_with?("/api/")
+    req.ip if req.path.start_with?("/api/") && req.request_method != "OPTIONS"
   end
 
   self.throttled_responder = lambda do |request|

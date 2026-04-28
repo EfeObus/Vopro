@@ -20,14 +20,24 @@ module Vopro
 
     config.active_job.queue_adapter = :sidekiq
 
+    # Browser treats localhost vs 127.0.0.1 as different origins. Many developers
+    # still have ALLOWED_ORIGINS=http://localhost:5173 only in .env — so in
+    # development we always merge both Vite URLs even when .env omits 127.0.0.1.
+    cors_origins =
+      ENV.fetch("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
+          .split(",")
+          .map(&:strip)
+          .reject(&:empty?)
+
+    if Rails.env.development?
+      %w[http://localhost:5173 http://127.0.0.1:5173].each do |dev_origin|
+        cors_origins << dev_origin unless cors_origins.include?(dev_origin)
+      end
+    end
+
     config.middleware.insert_before 0, Rack::Cors do
       allow do
-        # localhost and 127.0.0.1 are different browser origins — include both
-        # so Vite dev works whether you open http://localhost:5173 or ://127.0.0.1:5173.
-        origins ENV.fetch(
-          "ALLOWED_ORIGINS",
-          "http://localhost:5173,http://127.0.0.1:5173",
-        ).split(",").map(&:strip).reject(&:empty?)
+        origins cors_origins
         resource "*",
                  headers: :any,
                  expose: %w[Authorization],
