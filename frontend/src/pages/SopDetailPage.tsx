@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   AlertCircle,
   Archive,
@@ -25,10 +25,11 @@ import { cn } from '@/lib/cn';
 
 export default function SopDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [sop, setSop] = useState<Sop | undefined>();
   const [editing, setEditing] = useState(false);
   const [busyAction, setBusyAction] = useState<
-    'publish' | 'archive' | 'export-md' | 'export-pdf' | 'save' | null
+    'publish' | 'archive' | 'export-md' | 'export-pdf' | 'save' | 'delete' | null
   >(null);
   const [error, setError] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState('');
@@ -102,6 +103,23 @@ export default function SopDetailPage() {
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Archive failed.');
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function deletePermanently() {
+    if (!sop) return;
+    const ok = window.confirm(
+      'Permanently delete this SOP? This removes all versions and cannot be undone.',
+    );
+    if (!ok) return;
+    setBusyAction('delete');
+    try {
+      await api.deleteSop(sop.id);
+      navigate('/sops');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Delete failed.');
     } finally {
       setBusyAction(null);
     }
@@ -220,6 +238,16 @@ export default function SopDetailPage() {
                 {busyAction === 'archive' ? 'Archiving…' : 'Archive'}
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => void deletePermanently()}
+              disabled={busyAction === 'delete'}
+              className="btn-outline border-rose-200 text-rose-700 hover:bg-rose-50"
+              aria-label="Delete SOP permanently"
+            >
+              <Trash2 className="size-4" />
+              {busyAction === 'delete' ? 'Deleting…' : 'Delete'}
+            </button>
             <button
               onClick={() => (editing ? saveEdits() : setEditing(true))}
               disabled={busyAction === 'save'}

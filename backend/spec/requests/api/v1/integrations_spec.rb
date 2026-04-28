@@ -25,6 +25,59 @@ RSpec.describe "Api::V1::Integrations", type: :request do
     end
   end
 
+  describe "POST /api/v1/integrations" do
+    it "upserts REST so a second POST updates the same row" do
+      post "/api/v1/integrations",
+           params: {
+             integration: {
+               provider: "rest",
+               status: "connected",
+               settings: { endpoint: "https://example.com/a" },
+               secrets: { api_key: "one" }
+             }
+           },
+           headers: headers,
+           as: :json
+
+      expect(response).to have_http_status(:created)
+
+      post "/api/v1/integrations",
+           params: {
+             integration: {
+               provider: "rest",
+               status: "connected",
+               settings: { endpoint: "https://example.com/b" },
+               secrets: { api_key: "two" }
+             }
+           },
+           headers: headers,
+           as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(Integration.where(workspace: workspace, provider: "rest").count).to eq(1)
+      expect(Integration.find_by(workspace: workspace, provider: "rest").settings["endpoint"]).to eq("https://example.com/b")
+    end
+
+    it "returns 409 when a non-REST integration already exists" do
+      create(:integration, workspace: workspace, provider: "zendesk", status: "connected")
+
+      post "/api/v1/integrations",
+           params: {
+             integration: {
+               provider: "zendesk",
+               status: "connected",
+               settings: {},
+               secrets: {}
+             }
+           },
+           headers: headers,
+           as: :json
+
+      expect(response).to have_http_status(:conflict)
+      expect(JSON.parse(response.body).dig("error", "code")).to eq("integration_exists")
+    end
+  end
+
   describe "DELETE /api/v1/integrations/:id" do
     it "destroys the integration and writes an audit log entry" do
       integration = create(:integration, workspace: workspace, provider: "slack", status: "connected")

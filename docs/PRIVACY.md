@@ -81,13 +81,29 @@ filter* rather than a guarantee. Pair it with:
 3. **Short retention** — keep raw events at 30 days or less; SOPs derive
    patterns and shouldn't need the originals long term.
 
+### Call recordings (voice → transcript → SOP)
+
+Workspaces may upload **audio files** of calls or meetings (see Settings → Call
+recordings). Processing uses OpenAI **Whisper** for transcription (requires
+`OPENAI_API_KEY`) and the **ai-engine** to draft an SOP from the transcript.
+Raw audio is transmitted only for the transcription request; files are removed
+from application storage after processing completes or fails so voice data does
+not accumulate on disk. Obtain consent where required, restrict uploads to roles
+that may edit SOPs, and review generated drafts before publishing.
+
+**Transcript retention:** after processing, **plain-text transcripts** stay in the
+database until the row is deleted (e.g. account erasure, workspace deletion, or
+admin cleanup). Plan retention and exports accordingly.
+
 ## GDPR / data subject rights
 
-- **Access**: a user can export every event captured about them via the
-  dashboard.
-- **Deletion**: deleting a user purges their events and removes them from any
-  derived SOPs (the SOP regenerates from the remaining contributors).
-- **Portability**: events and SOPs export as JSON / Markdown / PDF.
+- **Access**: a user can export events captured about them, **call recordings
+  they uploaded** (including transcripts), and owned SOPs via **`GET /api/v1/me/export`**.
+- **Deletion**: **`DELETE /api/v1/me`** deletes their workflow events and **destroys
+  their call recording rows** (and pending audio files), then anonymises the user.
+  Remaining SOP content authored before deletion may still reference anonymised
+  ownership where FKs require it.
+- **Portability**: export returns JSON; SOPs can also be exported as Markdown / PDF from the app.
 
 ## Audit
 

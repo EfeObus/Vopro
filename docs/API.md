@@ -12,8 +12,10 @@ Content-Type: application/json
 JWTs come from `POST /auth/login`. They embed `user_id` and `workspaceId` and
 expire after 24 hours. Refresh by logging in again or hitting `POST /auth/refresh`.
 
-**Casing convention:** every JSON field is `camelCase`. Both the frontend (`Sop`,
-`AnalyticsOverview` types in `frontend/src/types`) and the agent rely on this.
+**Casing convention:** almost all JSON fields use **`camelCase`** (including analytics and SOP payloads). Two intentional exceptions:
+
+- **`Workspace.settings`** — keys remain **`snake_case`** (e.g. `auto_generate_sop`, `masking_rules`) so they match the JSONB column and Ruby conventions.
+- **`error.code`** — stable **`snake_case`** machine codes (see [Common codes](#common-codes)).
 
 Rate limits (enforced via `Rack::Attack`):
 
@@ -22,6 +24,8 @@ Rate limits (enforced via `Rack::Attack`):
 | `POST /auth/login`            | 5 / minute / IP, 10 / 5 min / email |
 | `POST /auth/password/forgot`  | 3 / 15 min / IP, 3 / hour / email   |
 | `POST /events/batch`          | 30 / minute / device                |
+| `POST /signup`                | 5 / hour / IP                       |
+| `POST /call_recordings`       | 15 / hour / IP                      |
 | All `/api/*`                  | 600 / 5 minutes / IP                |
 
 Throttled responses: `429 Too Many Requests` with a `Retry-After` header and
@@ -67,11 +71,13 @@ support correlation), and optional `details`.
 | 401  | `invalid_credentials`   | Wrong email/password on login. |
 | 403  | `forbidden`             | Authenticated but lacks the required role. |
 | 404  | `not_found`             | Resource absent or scoped to another workspace. |
-| 409  | `conflict`, `user_exists` | Idempotency / unique constraint conflict. |
+| 409  | `conflict`, `user_exists`, `integration_exists` | Duplicate resource, invite clash, or OAuth integration row already present (disconnect first). |
 | 410  | `invitation_expired`, `reset_token_expired` | Single-use token already consumed or past expiry. |
-| 413  | `payload_too_large`, `batch_too_large` | Body / batch exceeded the configured maximum. |
+| 413  | `payload_too_large`, `batch_too_large`, `audio_too_large` | Body / batch exceeded the configured maximum; or call-recording audio over **`MAX_AUDIO_BYTES`**. |
 | 422  | `unprocessable_entity`  | Validation failed; see `details` for the field map. |
+| 422  | `audio_empty`, `audio_too_small` | Call recording upload failed size checks (**`MIN_AUDIO_BYTES`** … **`MAX_AUDIO_BYTES`**). |
 | 422  | `weak_password`, `no_valid_events` | Domain-specific validation. |
+| 422  | `personal_email_not_allowed` | Signup with a consumer email (e.g. Gmail) when `RAILS_ENV` is not `development`. |
 | 429  | `rate_limited`          | Throttle tripped; honour `Retry-After`. |
 | 500  | `internal_error`        | Server bug. Always paired with a Sentry report. |
 
@@ -195,6 +201,10 @@ Public. Consumes a reset token and rotates the password.
 days; expired or revoked tokens return `410 Gone`. Acceptance is transactional:
 the user is created, the invitation is marked `accepted_at`, and a JWT is
 returned in one round-trip.
+
+When the workspace has a **`claimed_domain`**, `POST /invitations` requires the
+invite email’s domain to match it (`422` / `domain_mismatch` otherwise). If
+`claimed_domain` is blank (legacy tenants), any email address is allowed.
 
 ---
 
@@ -421,8 +431,10 @@ authorize URL with a generated `state` value cached on the server for 10 min.
 Provider redirects the browser here. The endpoint validates state, exchanges
 the code, persists the encrypted credentials on the `Integration` record,
 writes an audit log, and renders an HTML success page that closes the popup
-and notifies the opener (`window.opener.postMessage('vopro:integration-connected', '*')`).
-Errors render an HTML error page with the same close behaviour.
+and notifies the opener with  
+`postMessage({ type: 'vopro:integration-callback', ok: true, provider, message }, …)`  
+(target origins from `FRONTEND_ORIGIN`, or `*` in dev when unset).  
+Errors send the same payload shape with `ok: false`.
 
 ### `PATCH /integrations/:id`
 
@@ -432,6 +444,66 @@ re-running OAuth.
 ### `DELETE /integrations/:id`
 
 Disconnects and clears stored secrets.
+
+### `POST /integrations`
+
+Create or **upsert** an integration row. For **`provider: "rest"`**, if a REST row already exists for the workspace, it is **updated** (new endpoint / token). For non-REST providers, if a row already exists, respond **`409`** with `code: integration_exists` — disconnect first or rely on OAuth reconnect flows.
+
+Request body nests fields under `integration` using **`snake_case`** keys (`provider`, `status`, `settings`, `secrets`) per Rails strong params. Responses still use **`camelCase`** where noted (e.g. `createdAt` on integration rows). Nested maps inside `settings` / `secrets` follow provider-native naming.
+
+**Credentials storage:** OAuth tokens and API keys live in the `integrations`
+table (`secrets` column, encrypted at rest when AR encryption keys are configured).
+
+---
+
+## Workspace
+
+Workspace-wide preferences live on `Workspace.settings` (JSONB).
+
+### `GET /workspace`
+
+Authenticated. Returns the workspace profile merged with defaults:
+
+```json
+{
+  "id": "uuid",
+  "name": "Acme Corp",
+  "slug": "acme",
+  "settings": {
+    "auto_generate_sop": false,
+    "event_retention_days": 30,
+    "capture_web_enabled": true,
+    "capture_desktop_enabled": true,
+    "capture_terminal_enabled": false,
+    "capture_pause_incognito": true,
+    "masking_rules": [
+      { "id": "email", "enabled": true },
+      { "id": "phone", "enabled": true },
+      { "id": "cc", "enabled": true },
+      { "id": "gov", "enabled": true },
+      { "id": "token", "enabled": true },
+      { "id": "password", "enabled": true }
+    ]
+  }
+}
+```
+
+Defaults merge missing keys server-side; the stable rule ids are `email`, `phone`, `cc`, `gov`, `token`, `password`.
+
+### `PATCH /workspace`
+
+Admin only. Body shape:
+
+```json
+{
+  "workspace": {
+    "settings": {
+      "auto_generate_sop": true,
+      "event_retention_days": 45
+    }
+  }
+}
+```
 
 ---
 
@@ -447,6 +519,11 @@ Returns the data the dashboard top cards consume:
   "runsLast30d": 1842,
   "automationMinutesSaved": 4310,
   "activeUsers": 18,
+  "runsLast7d": 210,
+  "runsPrev7d": 180,
+  "runsWeekOverWeekPercent": 16.7,
+  "publishedSopsUpdatedLast7d": 3,
+  "estimatedHoursSaved": 71.8,
   "runsByDay": [
     { "date": "2026-04-21T00:00:00Z", "label": "Mon", "runs": 124, "sops": 2 }
   ],
@@ -456,10 +533,74 @@ Returns the data the dashboard top cards consume:
 }
 ```
 
+`runsWeekOverWeekPercent` may be `null` when there was no activity in the prior 7-day window.
+
+`publishedSopsUpdatedLast7d` counts **published** SOPs whose record was **updated** in the last 7 days (edits and republishes), not strictly “first published at.”
+
 ### `GET /analytics/bottlenecks`
 
 Returns just the bottlenecks array (same row shape as above), unbounded by
 the overview's top-N limit.
+
+---
+
+## Organization & onboarding
+
+### `POST /signup` (public)
+
+Creates a workspace, an admin user, a signup email-verification token, and sends `SignupMailer`. Returns `201` with `{ token, user, workspace }` (same user/workspace shapes as login / organization snapshot).
+
+Request body wraps fields under `signup`:
+
+- `workspace_name`, `claimed_domain`, `admin_email`, `admin_password` (≥ 12 chars), `admin_name`
+- Optional: `slug`, `billing_plan`, `seats_limit`
+
+In **production**, `admin_email` must be on a **corporate** domain (consumer domains such as Gmail are rejected with `personal_email_not_allowed`). It must also match `claimed_domain`.
+
+In **development** (`RAILS_ENV=development`), consumer emails are allowed; if `claimed_domain` does not match the domain of `admin_email`, the server stores the admin email domain as `claimed_domain`.
+
+Other errors: `domain_mismatch`, `weak_password`, `validation_failed`, `workspace_exists`, etc.
+
+### `POST /signup/verify_email` (public)
+
+Body: `{ "token": "<raw token from email>" }`. Consumes the token and sets `domain_verified_at` on the workspace. Returns `{ ok: true, workspaceId }`. Invalid/expired tokens: `410` with `invalid_token`.
+
+### `GET /organization` (authenticated, **admin**)
+
+Returns an organization snapshot: `claimedDomain`, `domainVerified`, `billingPlan`, `trialEndsAt`, `trialActive`, `seatsLimit`, `seatsUsed`, `dnsTxtHost`, `dnsTxtValue` (token only after starting DNS verification).
+
+### `POST /organization/domain_dns/start` (authenticated, **admin**)
+
+Stores a TXT verification token on the workspace and returns `{ dnsTxtHost, dnsTxtValue }` for `_vopro.<claimed_domain>`.
+
+### `POST /organization/domain_dns/verify` (authenticated, **admin**)
+
+Resolves DNS and, when the TXT record contains the issued token, sets `domain_verified_at`. Returns the updated organization snapshot. If TXT is missing: `422` with `dns_verification_failed`.
+
+### `POST /me/consents` (authenticated)
+
+Body: `{ "consent_key": "workflow_capture_policy_v1" }`. Records consent (`201 Created`). Unknown keys: `400`.
+
+---
+
+## Call recordings (voice → transcript → SOP draft)
+
+### `GET /api/v1/call_recordings` · `GET /api/v1/call_recordings/:id` (authenticated)
+
+Lists or shows workspace call uploads. Response objects include `transcript`
+only when the caller **may read transcripts**: **admin/editor**, or the user who
+uploaded the recording. Otherwise `transcript` is `null` and `transcriptRedacted`
+is `true`.
+
+### `POST /api/v1/call_recordings` (authenticated, **editor or admin**)
+
+`multipart/form-data` with field **`audio`** (file). Optional **`title_hint`** string.
+
+Allowed extensions match Whisper (e.g. `.mp3`, `.wav`, `.webm`); **max ~24MB**, minimum non-empty size enforced (`audio_empty` / `audio_too_small`). Rate-limited
+(**15 POSTs / hour / IP** via Rack::Attack). Requires **Redis + Sidekiq** — if enqueue fails, **`503`** with `redis_unavailable` (no orphaned DB row after cleanup). On success returns **`202 Accepted`** with the
+pending row (`upload_failed` if disk/write fails).
+
+Audit action: `call_recording.create`.
 
 ---
 
@@ -468,12 +609,13 @@ the overview's top-N limit.
 ### `GET /me/export`
 
 Authenticated. Returns the calling user's personal data archive (profile,
-emitted events, owned SOPs, audit-log rows). Suitable for a "download my data"
-button.
+emitted workflow events, **`callRecordings`** — transcripts and metadata for rows
+they uploaded — owned SOPs). Suitable for a "download my data" button.
 
 ### `DELETE /me`
 
-Authenticated. Anonymises the user record and deletes their workflow events.
+Authenticated. Deletes the user's workflow events, **`destroy`s their call recordings**
+(including any pending audio on disk), then anonymises the user record.
 The row is retained for referential integrity (FKs from `audit_logs`,
 `sops.owner_id`) but `email`, `name`, `password_digest`, and `deleted_at` are
 overwritten. An `auth.account_deleted` audit-log row is recorded.
@@ -493,29 +635,4 @@ Readiness probe. Verifies Postgres, Redis, and the AI engine. Returns
 otherwise. Use this for Kubernetes `readinessProbe` and load balancer health
 checks.
 
----
-
-## Error format
-
-All error responses are JSON:
-
-```json
-{ "error": "Human-readable message" }
-```
-
-Throttled responses additionally carry a `retry_after` integer (seconds) and
-mirror it in the `Retry-After` HTTP header. Validation failures (`422`)
-include a `details` map keyed by the offending attribute.
-
-Standard codes:
-
-| HTTP  | When                                    |
-|-------|-----------------------------------------|
-| `400` | Bad request body or missing parameter   |
-| `401` | Missing / invalid token                 |
-| `403` | Authenticated but not allowed           |
-| `404` | Resource not found in this workspace    |
-| `413` | Payload too large                       |
-| `422` | Validation failed                       |
-| `429` | Rate limited                            |
-| `500` | Server error                            |
+Non-2xx responses use only the [unified error envelope](#error-envelope) at the top of this document (not a bare `{ "error": "…" }` string).

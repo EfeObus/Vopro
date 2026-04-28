@@ -2,6 +2,7 @@ class Sop < ApplicationRecord
   belongs_to :workspace
   belongs_to :owner, class_name: "User", optional: true
   belongs_to :workflow, optional: true
+  has_many :call_recordings, dependent: :nullify
   has_many :sop_versions, dependent: :destroy
 
   STATUSES = %w[draft published needs_review archived].freeze

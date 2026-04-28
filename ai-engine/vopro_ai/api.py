@@ -10,9 +10,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from . import __version__
-from .models import DetectRequest, DetectResponse, GenerateRequest, GenerateResponse
+from .models import DetectRequest, DetectResponse, GenerateRequest, GenerateResponse, TranscriptGenerateRequest
 from .pattern import detect
 from .sop import generate
+from .transcript import generate_from_transcript
 
 logger = logging.getLogger(__name__)
 
@@ -196,3 +197,8 @@ def detect_endpoint(req: DetectRequest) -> DetectResponse:
 @app.post("/generate", response_model=GenerateResponse)
 def generate_endpoint(req: GenerateRequest) -> GenerateResponse:
     return generate(req.workflow, req.events)
+
+
+@app.post("/generate_from_transcript", response_model=GenerateResponse)
+def generate_from_transcript_endpoint(req: TranscriptGenerateRequest) -> GenerateResponse:
+    return generate_from_transcript(req.transcript, req.title_hint)

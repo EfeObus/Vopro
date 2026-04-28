@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AlertCircle, Check, Sparkles, X } from 'lucide-react';
+import { AlertCircle, Check, Pencil, Sparkles, X } from 'lucide-react';
 import PageHeader from '@/components/PageHeader';
 import { api } from '@/lib/api';
 import type { DetectedWorkflow } from '@/types';
@@ -24,6 +24,23 @@ export default function DetectedWorkflowsPage() {
       setItems((prev) => prev.map((i) => (i.id === id ? updated : i)));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not dismiss workflow.');
+      setItems(previous);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function rename(id: string, currentTitle: string) {
+    const next = window.prompt('Workflow title', currentTitle);
+    if (next == null || next.trim() === '' || next.trim() === currentTitle) return;
+    const previous = items;
+    setBusyId(id);
+    try {
+      const updated = await api.updateWorkflow(id, { title: next.trim() });
+      setItems((prev) => prev.map((i) => (i.id === id ? updated : i)));
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not rename workflow.');
       setItems(previous);
     } finally {
       setBusyId(null);
@@ -70,6 +87,17 @@ export default function DetectedWorkflowsPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="font-semibold text-ink-900 truncate">{item.title}</h3>
+                  {item.status === 'pending' && (
+                    <button
+                      type="button"
+                      onClick={() => void rename(item.id, item.title)}
+                      disabled={busy}
+                      className="btn-outline py-0.5 px-1.5 text-xs shrink-0"
+                      aria-label="Rename workflow"
+                    >
+                      <Pencil className="size-3.5" />
+                    </button>
+                  )}
                   <span className="chip bg-brand-50 text-brand-700">
                     {formatPercent(item.confidence)}
                   </span>

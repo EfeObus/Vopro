@@ -11,4 +11,8 @@ Rails.application.configure do
   config.cache_store = :memory_store
   config.action_dispatch.show_exceptions = false
   config.active_support.deprecation = :stderr
+
+  # Signup and other flows call `deliver_now`; avoid hitting SMTP on localhost during specs.
+  config.action_mailer.delivery_method = :test
+  config.action_mailer.perform_deliveries = true
 end

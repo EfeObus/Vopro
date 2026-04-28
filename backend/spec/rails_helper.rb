@@ -1,6 +1,7 @@
 require "spec_helper"
 
-ENV["RAILS_ENV"] ||= "test"
+# Force test so a developer shell with RAILS_ENV=development does not break request specs.
+ENV["RAILS_ENV"] = "test"
 
 require_relative "../config/environment"
 abort("Rails is running in production!") if Rails.env.production?
@@ -17,7 +18,7 @@ rescue ActiveRecord::PendingMigrationError => e
 end
 
 RSpec.configure do |config|
-  config.fixture_path = "#{::Rails.root}/spec/fixtures"
+  config.fixture_paths = ["#{::Rails.root}/spec/fixtures"]
   config.use_transactional_fixtures = true
   config.infer_spec_type_from_file_location!
   config.filter_rails_from_backtrace!

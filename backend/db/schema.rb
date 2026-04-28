@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_04_27_000004) do
+ActiveRecord::Schema[7.1].define(version: 2026_04_28_180000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -28,6 +28,26 @@ ActiveRecord::Schema[7.1].define(version: 2026_04_27_000004) do
     t.index ["user_id"], name: "index_audit_logs_on_user_id"
     t.index ["workspace_id", "created_at"], name: "index_audit_logs_on_workspace_id_and_created_at"
     t.index ["workspace_id"], name: "index_audit_logs_on_workspace_id"
+  end
+
+  create_table "call_recordings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "workspace_id", null: false
+    t.uuid "user_id", null: false
+    t.uuid "sop_id"
+    t.string "status", default: "pending", null: false
+    t.text "transcript"
+    t.string "title_hint"
+    t.string "error_message"
+    t.string "audio_file_path"
+    t.string "audio_content_type"
+    t.bigint "audio_byte_size"
+    t.jsonb "metadata", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["sop_id"], name: "index_call_recordings_on_sop_id"
+    t.index ["user_id"], name: "index_call_recordings_on_user_id"
+    t.index ["workspace_id", "created_at"], name: "index_call_recordings_on_workspace_id_and_created_at", order: { created_at: :desc }
+    t.index ["workspace_id"], name: "index_call_recordings_on_workspace_id"
   end
 
   create_table "integrations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -71,6 +91,18 @@ ActiveRecord::Schema[7.1].define(version: 2026_04_27_000004) do
     t.index ["user_id"], name: "index_password_reset_tokens_on_user_id"
   end
 
+  create_table "signup_email_tokens", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "workspace_id", null: false
+    t.string "token", null: false
+    t.datetime "expires_at", null: false
+    t.datetime "consumed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["token"], name: "index_signup_email_tokens_on_token", unique: true
+    t.index ["workspace_id", "consumed_at"], name: "index_signup_email_tokens_on_workspace_id_and_consumed_at"
+    t.index ["workspace_id"], name: "index_signup_email_tokens_on_workspace_id"
+  end
+
   create_table "sop_versions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "sop_id", null: false
     t.integer "version", null: false
@@ -103,6 +135,18 @@ ActiveRecord::Schema[7.1].define(version: 2026_04_27_000004) do
     t.index ["tags"], name: "index_sops_on_tags", using: :gin
     t.index ["workflow_id"], name: "index_sops_on_workflow_id"
     t.index ["workspace_id"], name: "index_sops_on_workspace_id"
+  end
+
+  create_table "user_consents", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "user_id", null: false
+    t.string "consent_key", null: false
+    t.datetime "accepted_at", null: false
+    t.string "ip"
+    t.jsonb "metadata", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["user_id", "consent_key"], name: "index_user_consents_on_user_id_and_consent_key", unique: true
+    t.index ["user_id"], name: "index_user_consents_on_user_id"
   end
 
   create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -163,19 +207,32 @@ ActiveRecord::Schema[7.1].define(version: 2026_04_27_000004) do
     t.jsonb "settings", default: {}, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "claimed_domain"
+    t.datetime "domain_verified_at"
+    t.string "dns_verification_token"
+    t.string "billing_plan", default: "free_trial", null: false
+    t.datetime "trial_ends_at"
+    t.integer "seats_limit", default: 50, null: false
+    t.index ["claimed_domain"], name: "index_workspaces_on_claimed_domain"
+    t.index ["dns_verification_token"], name: "index_workspaces_on_dns_verification_token", unique: true
     t.index ["slug"], name: "index_workspaces_on_slug", unique: true
   end
 
   add_foreign_key "audit_logs", "users"
   add_foreign_key "audit_logs", "workspaces"
+  add_foreign_key "call_recordings", "sops"
+  add_foreign_key "call_recordings", "users"
+  add_foreign_key "call_recordings", "workspaces"
   add_foreign_key "integrations", "workspaces"
   add_foreign_key "invitations", "users", column: "inviter_id"
   add_foreign_key "invitations", "workspaces"
   add_foreign_key "password_reset_tokens", "users"
+  add_foreign_key "signup_email_tokens", "workspaces"
   add_foreign_key "sop_versions", "sops"
   add_foreign_key "sops", "users", column: "owner_id"
   add_foreign_key "sops", "workflows"
   add_foreign_key "sops", "workspaces"
+  add_foreign_key "user_consents", "users"
   add_foreign_key "users", "workspaces"
   add_foreign_key "workflow_events", "users"
   add_foreign_key "workflow_events", "workflows"

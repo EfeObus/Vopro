@@ -26,6 +26,8 @@ MAX_NGRAM = 8
 MIN_SUPPORT = 3                 # appears in at least N sessions
 MIN_DISTINCT_USERS = 1           # at least this many distinct users
 TOP_K_CANDIDATES = 25
+# Cap IDs returned per candidate so Postgres `WHERE id IN (...)` stays bounded.
+MAX_LINKED_EVENT_IDS = 800
 
 
 def _normalize_target(t: str | None) -> str:
@@ -69,6 +71,37 @@ def _sessionize(events: Iterable[Event]) -> list[list[Event]]:
 
 def _ngrams(seq: list[str], n: int) -> list[tuple[str, ...]]:
     return [tuple(seq[i : i + n]) for i in range(len(seq) - n + 1)]
+
+
+def _linked_event_ids_for_gram(
+    gram: tuple[str, ...],
+    sequences: list[list[str]],
+    sessions: list[list[Event]],
+    *,
+    max_ids: int = MAX_LINKED_EVENT_IDS,
+) -> list[str]:
+    """Collect distinct event IDs from every session whose step sequence contains ``gram`` contiguously."""
+    out: list[str] = []
+    seen: set[str] = set()
+    n = len(gram)
+    for seq, raw in zip(sequences, sessions, strict=False):
+        if len(seq) < n:
+            continue
+        matched = False
+        for i in range(len(seq) - n + 1):
+            if tuple(seq[i : i + n]) == gram:
+                matched = True
+                break
+        if not matched:
+            continue
+        for e in raw:
+            eid = e.id
+            if eid and eid not in seen:
+                seen.add(eid)
+                out.append(eid)
+                if len(out) >= max_ids:
+                    return out
+    return out
 
 
 def detect(events: list[Event]) -> list[WorkflowCandidate]:
@@ -117,6 +150,7 @@ def detect(events: list[Event]) -> list[WorkflowCandidate]:
         first_app = next((p.split(" | ")[1] for p in g if " | " in p), None) or None
         title = _make_title(g)
         confidence = min(1.0, 0.4 + 0.05 * counts[g] + 0.05 * len(users_per[g]))
+        linked = _linked_event_ids_for_gram(g, sequences, sessions)
         candidates.append(
             WorkflowCandidate(
                 signature=sig,
@@ -125,7 +159,8 @@ def detect(events: list[Event]) -> list[WorkflowCandidate]:
                 occurrences=counts[g],
                 last_seen=last_seen[g],
                 confidence=round(confidence, 3),
-                sample_event_ids=sample_ids[g][:5],
+                sample_event_ids=linked[:5],
+                linked_event_ids=linked,
             )
         )
 

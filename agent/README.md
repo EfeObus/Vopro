@@ -12,6 +12,10 @@ npm run start
 The agent runs as a tray app. Capture is **disabled by default**; users
 explicitly opt in per application.
 
+**Audio / voice:** call-audio upload and transcript-based SOP generation live in
+the **web dashboard** (**Settings → Call recordings**), not in this Electron
+agent.
+
 ## Privacy boundary
 
 This agent is the trust boundary. All events go through:

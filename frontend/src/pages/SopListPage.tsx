@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Search, Plus, Users, Activity } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { AlertCircle, Search, Plus, Users, Activity } from 'lucide-react';
 import PageHeader from '@/components/PageHeader';
 import StatusBadge from '@/components/StatusBadge';
 import { api } from '@/lib/api';
@@ -16,13 +16,34 @@ const FILTERS: { id: SopStatus | 'all'; label: string }[] = [
 ];
 
 export default function SopListPage() {
+  const navigate = useNavigate();
   const [sops, setSops] = useState<Sop[]>([]);
   const [filter, setFilter] = useState<SopStatus | 'all'>('all');
   const [query, setQuery] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     void api.listSops().then(setSops);
   }, []);
+
+  async function createDraft() {
+    setCreating(true);
+    setError(null);
+    try {
+      const sop = await api.createSop({
+        title: 'Untitled SOP',
+        description: '',
+        status: 'draft',
+        tags: [],
+      });
+      navigate(`/sops/${sop.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not create SOP.');
+    } finally {
+      setCreating(false);
+    }
+  }
 
   const filtered = useMemo(() => {
     return sops.filter((s) => {
@@ -42,12 +63,22 @@ export default function SopListPage() {
         title="SOP Library"
         subtitle="Every SOP Vopro has generated and curated for your team."
         actions={
-          <button className="btn-primary">
+          <button type="button" className="btn-primary" disabled={creating} onClick={() => void createDraft()}>
             <Plus className="size-4" />
-            New SOP
+            {creating ? 'Creating…' : 'New SOP'}
           </button>
         }
       />
+
+      {error && (
+        <div
+          role="alert"
+          className="card p-3 mb-4 text-sm text-rose-700 bg-rose-50 border-rose-200 flex items-center gap-2"
+        >
+          <AlertCircle className="size-4 shrink-0" />
+          {error}
+        </div>
+      )}
 
       <div className="flex flex-col sm:flex-row gap-3 mb-5">
         <div className="relative flex-1">

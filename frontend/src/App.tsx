@@ -17,6 +17,9 @@ const LoginPage = lazy(() => import('@/pages/LoginPage'));
 const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage'));
 const AcceptInvitationPage = lazy(() => import('@/pages/AcceptInvitationPage'));
+const SignupPage = lazy(() => import('@/pages/SignupPage'));
+const VerifyEmailPage = lazy(() => import('@/pages/VerifyEmailPage'));
+const OrganizationPage = lazy(() => import('@/pages/OrganizationPage'));
 
 function PageFallback() {
   return (
@@ -29,6 +32,8 @@ export default function App() {
     <Suspense fallback={<PageFallback />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/forgot" element={<ForgotPasswordPage />} />
         <Route path="/reset/:token" element={<ResetPasswordPage />} />
         <Route path="/invite/:token" element={<AcceptInvitationPage />} />
@@ -45,6 +50,7 @@ export default function App() {
           <Route path="workflows" element={<DetectedWorkflowsPage />} />
           <Route path="bottlenecks" element={<BottlenecksPage />} />
           <Route path="integrations" element={<IntegrationsPage />} />
+          <Route path="organization" element={<OrganizationPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Routes>

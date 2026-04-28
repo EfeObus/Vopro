@@ -8,9 +8,27 @@ module Api
       end
 
       def create
-        integration = current_user.workspace.integrations.create!(integration_params)
-        audit("integration.create", integration)
-        render json: IntegrationSerializer.call(integration), status: :created
+        workspace = current_user.workspace
+        attrs = integration_params
+        provider = attrs[:provider].to_s.presence
+        if provider.blank?
+          return render_error(status: :bad_request, code: "bad_request", message: "provider is required")
+        end
+
+        integration = workspace.integrations.find_or_initialize_by(provider: provider)
+        if integration.persisted? && provider != "rest"
+          return render_error(
+            status: :conflict,
+            code: "integration_exists",
+            message: "Disconnect the existing #{provider} integration before connecting again."
+          )
+        end
+
+        was_new = integration.new_record?
+        integration.assign_attributes(attrs.except(:provider))
+        integration.save!
+        audit(was_new ? "integration.create" : "integration.update", integration)
+        render json: IntegrationSerializer.call(integration), status: was_new ? :created : :ok
       end
 
       def update
@@ -51,7 +69,22 @@ module Api
       end
 
       def integration_params
-        params.require(:integration).permit(:provider, :status, settings: {}, secrets: {})
+        raw = params.require(:integration)
+        permitted = raw.permit(:provider, :status)
+        permitted[:settings] = coerce_nested_json(raw[:settings]) if raw[:settings].present?
+        permitted[:secrets] = coerce_nested_json(raw[:secrets]) if raw[:secrets].present?
+        permitted
+      end
+
+      def coerce_nested_json(value)
+        case value
+        when ActionController::Parameters
+          value.permit!.to_h
+        when Hash
+          value.stringify_keys
+        else
+          {}
+        end
       end
     end
   end

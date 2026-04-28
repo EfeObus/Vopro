@@ -5,7 +5,8 @@ class UserSerializer
       email: user.email,
       name: user.name,
       role: user.role,
-      workspaceId: user.workspace_id
+      workspaceId: user.workspace_id,
+      captureConsentAccepted: user.consented?("workflow_capture_policy_v1")
     }
   end
 end

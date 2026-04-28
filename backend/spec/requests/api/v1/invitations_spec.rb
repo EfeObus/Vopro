@@ -32,6 +32,29 @@ RSpec.describe "Api::V1::Invitations", type: :request do
            headers: auth_headers_for(admin).merge("Content-Type" => "application/json")
       expect(response).to have_http_status(:conflict)
     end
+
+    context "when the workspace has a claimed domain" do
+      let(:workspace) { create(:workspace, claimed_domain: "acme.com") }
+      let(:admin) { create(:user, workspace: workspace, role: "admin") }
+
+      it "creates an invitation when the email matches the domain" do
+        post "/api/v1/invitations",
+             params: { email: "peer@acme.com", role: "viewer" }.to_json,
+             headers: auth_headers_for(admin).merge("Content-Type" => "application/json")
+
+        expect(response).to have_http_status(:created)
+      end
+
+      it "422s when the email domain does not match" do
+        post "/api/v1/invitations",
+             params: { email: "outsider@gmail.com", role: "viewer" }.to_json,
+             headers: auth_headers_for(admin).merge("Content-Type" => "application/json")
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        body = JSON.parse(response.body)
+        expect(body.dig("error", "code")).to eq("domain_mismatch")
+      end
+    end
   end
 
   describe "GET /api/v1/auth/invitations/:token" do

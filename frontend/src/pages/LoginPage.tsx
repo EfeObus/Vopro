@@ -11,6 +11,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as LocationState | null)?.from?.pathname ?? '/';
+  const verifiedEmail = Boolean((location.state as { verifiedEmail?: boolean } | null)?.verifiedEmail);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -49,6 +50,12 @@ export default function LoginPage() {
             <div className="text-xs text-ink-400">Sign in to your workspace</div>
           </div>
         </div>
+
+        {verifiedEmail && (
+          <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+            Email verified. You can sign in with your workspace credentials.
+          </div>
+        )}
 
         <form onSubmit={onSubmit} className="space-y-4">
           <label className="block">
@@ -89,10 +96,18 @@ export default function LoginPage() {
             {submitting ? 'Signing in…' : 'Sign in'}
           </button>
 
-          <div className="text-center text-xs text-ink-500">
-            <Link to="/forgot" className="text-brand-600 hover:underline">
-              Forgot your password?
-            </Link>
+          <div className="text-center text-xs text-ink-500 space-y-2">
+            <div>
+              <Link to="/forgot" className="text-brand-600 hover:underline">
+                Forgot your password?
+              </Link>
+            </div>
+            <div>
+              New to Vopro?{' '}
+              <Link to="/signup" className="text-brand-600 hover:underline">
+                Create workspace
+              </Link>
+            </div>
           </div>
         </form>
       </div>

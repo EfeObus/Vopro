@@ -28,6 +28,7 @@ setup:
 	cd backend && bundle install && bin/rails db:create db:migrate
 	cd ai-engine && python -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
 	cd agent && npm install
+	cd integrations && npm install
 
 frontend:
 	cd frontend && npm run dev
@@ -57,3 +58,4 @@ clean:
 	rm -rf backend/tmp backend/log
 	rm -rf ai-engine/.venv ai-engine/__pycache__
 	rm -rf agent/node_modules agent/dist
+	rm -rf integrations/node_modules

@@ -57,7 +57,19 @@ Rails.application.routes.draw do
 
   namespace :api do
     namespace :v1 do
+      # Public B2B tenant registration
+      post "signup", to: "signups#create"
+      post "signup/verify_email", to: "signups#verify_email"
+
       post "events/batch", to: "events#create_batch"
+
+      resources :call_recordings, only: %i[index show create]
+
+      resource :workspace, only: %i[show update]
+
+      get "organization", to: "organizations#show"
+      post "organization/domain_dns/start", to: "organizations#start_dns_verification"
+      post "organization/domain_dns/verify", to: "organizations#verify_dns"
 
       resources :workflows, only: %i[index show update] do
         member do
@@ -100,7 +112,8 @@ Rails.application.routes.draw do
 
       resources :invitations, only: %i[index create destroy]
 
-      # GDPR
+      # GDPR + consent ledger
+      post   "me/consents", to: "me#consent"
       get    "me/export", to: "me#export"
       delete "me",        to: "me#destroy"
     end

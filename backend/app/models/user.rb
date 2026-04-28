@@ -4,6 +4,8 @@ class User < ApplicationRecord
   belongs_to :workspace
   has_many :owned_sops, class_name: "Sop", foreign_key: :owner_id, dependent: :nullify
   has_many :password_reset_tokens, dependent: :destroy
+  has_many :user_consents, dependent: :destroy
+  has_many :call_recordings, dependent: :destroy
 
   ROLES = %w[admin editor viewer].freeze
 
@@ -28,5 +30,9 @@ class User < ApplicationRecord
 
   def can_edit_sops?
     role.in?(%w[admin editor])
+  end
+
+  def consented?(key)
+    user_consents.exists?(consent_key: key)
   end
 end

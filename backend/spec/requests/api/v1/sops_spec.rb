@@ -78,6 +78,20 @@ RSpec.describe "Api::V1::Sops", type: :request do
     end
   end
 
+  describe "DELETE /api/v1/sops/:id" do
+    it "destroys the SOP and nullifies linked call recordings" do
+      sop = create(:sop, workspace: workspace, owner: user)
+      cr = create(:call_recording, workspace: workspace, user: user, sop: sop, status: "completed", transcript: "x")
+
+      expect {
+        delete "/api/v1/sops/#{sop.id}", headers: headers
+      }.to change(Sop, :count).by(-1)
+
+      expect(response).to have_http_status(:no_content)
+      expect(cr.reload.sop_id).to be_nil
+    end
+  end
+
   describe "PATCH /api/v1/sops/:id" do
     it "updates the SOP and creates a new version" do
       sop = create(:sop, workspace: workspace, owner: user)

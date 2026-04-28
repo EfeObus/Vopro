@@ -11,6 +11,16 @@ class Rack::Attack
     %w[127.0.0.1 ::1].include?(req.ip) && Rails.env.development?
   end
 
+  # Self-serve org signup: abuse protection on tenant creation.
+  throttle("signup/ip", limit: 5, period: 1.hour) do |req|
+    req.ip if req.path == "/api/v1/signup" && req.post?
+  end
+
+  # Call audio uploads (Whisper): bounded per IP to limit cost / abuse.
+  throttle("call_recordings/ip", limit: 15, period: 1.hour) do |req|
+    req.ip if req.path == "/api/v1/call_recordings" && req.post?
+  end
+
   # Auth login: 5 attempts / minute / IP. Stops credential stuffing dead.
   throttle("login/ip", limit: 5, period: 1.minute) do |req|
     req.ip if req.path == "/api/v1/auth/login" && req.post?

@@ -33,6 +33,8 @@ export default function IntegrationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyProvider, setBusyProvider] = useState<IntegrationProvider | null>(null);
+  const [restEndpoint, setRestEndpoint] = useState('');
+  const [restKey, setRestKey] = useState('');
 
   const refresh = useCallback(() => {
     setLoading(true);
@@ -49,6 +51,12 @@ export default function IntegrationsPage() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    const rest = integrations.find((i) => i.provider === 'rest');
+    const ep = rest?.settings?.endpoint;
+    if (typeof ep === 'string') setRestEndpoint(ep);
+  }, [integrations]);
 
   // Listen for the OAuth popup's postMessage so the list refreshes the
   // moment a connection completes — no manual page reload required.
@@ -70,6 +78,54 @@ export default function IntegrationsPage() {
       window.open(url, 'vopro-oauth', 'width=520,height=640');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to start OAuth flow.');
+    } finally {
+      setBusyProvider(null);
+    }
+  }
+
+  async function connectRest() {
+    if (!restEndpoint.trim()) {
+      setError('Enter the HTTPS endpoint that returns workflow events JSON.');
+      return;
+    }
+    setBusyProvider('rest');
+    setError(null);
+    try {
+      await api.createIntegration({
+        provider: 'rest',
+        status: 'connected',
+        settings: { endpoint: restEndpoint.trim() },
+        secrets: { api_key: restKey.trim() },
+      });
+      setRestEndpoint('');
+      setRestKey('');
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save REST integration.');
+    } finally {
+      setBusyProvider(null);
+    }
+  }
+
+  async function saveRestIntegration(record: Integration) {
+    if (!restEndpoint.trim()) {
+      setError('Enter the HTTPS endpoint that returns workflow events JSON.');
+      return;
+    }
+    setBusyProvider('rest');
+    setError(null);
+    try {
+      await api.updateIntegration(record.id, {
+        settings: {
+          ...record.settings,
+          endpoint: restEndpoint.trim(),
+        },
+        ...(restKey.trim() ? { secrets: { api_key: restKey.trim() } } : {}),
+      });
+      setRestKey('');
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not update REST integration.');
     } finally {
       setBusyProvider(null);
     }
@@ -97,7 +153,7 @@ export default function IntegrationsPage() {
     <div className="px-8 py-8 max-w-[1280px] mx-auto">
       <PageHeader
         title="Integrations"
-        subtitle="Connect Vopro to the systems your team already uses. Capture happens on-device with masking applied before any data leaves the agent."
+        subtitle="Connect Vopro to the systems your team already uses. Capture happens on-device with masking applied before any data leaves the agent. Google Workspace and Microsoft 365 use OAuth today; Generic REST is ready for custom pipelines. Other providers show Coming soon while connectors are built — ask us if you need one prioritized."
       />
 
       {error && (
@@ -122,7 +178,55 @@ export default function IntegrationsPage() {
                   <div className="font-semibold text-ink-900">{meta.name}</div>
                   <div className="text-sm text-ink-500">{meta.description}</div>
                 </div>
-                {isConnected ? (
+                {meta.id === 'rest' ? (
+                  <div className="flex flex-col items-stretch gap-2 max-w-[min(100%,280px)] w-full">
+                    <input
+                      type="url"
+                      placeholder="https://api.internal/events"
+                      value={restEndpoint}
+                      onChange={(e) => setRestEndpoint(e.target.value)}
+                      className="w-full rounded-lg border border-ink-200 px-2 py-1.5 text-xs"
+                      disabled={busy}
+                    />
+                    <input
+                      type="password"
+                      placeholder={isConnected ? 'New API key (optional)' : 'Bearer token (optional)'}
+                      value={restKey}
+                      onChange={(e) => setRestKey(e.target.value)}
+                      className="w-full rounded-lg border border-ink-200 px-2 py-1.5 text-xs"
+                      disabled={busy}
+                    />
+                    {isConnected && record ? (
+                      <div className="flex flex-col gap-2 w-full">
+                        <button
+                          type="button"
+                          onClick={() => void saveRestIntegration(record)}
+                          disabled={busy}
+                          className="btn-primary w-full text-xs py-1.5"
+                        >
+                          {busy ? 'Saving…' : 'Save changes'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void disconnect(record)}
+                          disabled={busy}
+                          className="btn-outline w-full text-xs py-1.5 justify-center"
+                        >
+                          {busy ? 'Disconnecting…' : 'Disconnect'}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void connectRest()}
+                        disabled={busy}
+                        className="btn-primary w-full text-xs py-1.5"
+                      >
+                        {busy ? 'Saving…' : 'Connect REST'}
+                      </button>
+                    )}
+                  </div>
+                ) : isConnected ? (
                   <button
                     onClick={() => record && disconnect(record)}
                     disabled={busy}

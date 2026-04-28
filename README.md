@@ -74,6 +74,18 @@ process inefficiencies.
 - Opt-in tracking mechanisms
 - Compliance readiness (GDPR principles)
 
+### Voice / call recordings (optional)
+- Editors upload audio from **Settings → Call recordings → SOPs** (multipart upload to the Rails API)
+- **OpenAI Whisper** transcribes audio server-side; **`OPENAI_API_KEY`** must be set where Whisper runs (typically `backend/`)
+- **`ProcessCallRecordingJob`** (Sidekiq + **Redis**) chains transcription → **`POST /generate_from_transcript`** on the AI engine → draft **SOP** + **SopVersion**
+- GDPR: account export includes call-recording metadata; account deletion removes associated recordings (see [`docs/PRIVACY.md`](docs/PRIVACY.md))
+
+### B2B rollout (organizations, not lone users)
+
+Vopro is sold **to companies**, not directly to employees as consumers. Typical buyers include operations, IT/security, HR/training, or engineering leadership. Intended onboarding covers **workspace creation**, **domain verification**, **plan selection**, then **admin controls** for invites, policies, and integrations.
+
+**Permission is two-layer:** the organization authorizes deployment and scope; **each person** still gets an explicit **accept / decline** flow before capture—a requirement for trustworthy rollout. Details: [`docs/B2B_ONBOARDING.md`](docs/B2B_ONBOARDING.md). Technical privacy controls: [`docs/PRIVACY.md`](docs/PRIVACY.md).
+
 ---
 
 ## Architecture
@@ -89,7 +101,9 @@ process inefficiencies.
                                   ┌──────────────┐                    │
                                   │  React + TS  │ ◀──────────────────┘
                                   │  Dashboard   │      generated SOPs
-                                  └──────────────┘
+                                  └──────┬───────┘
+                                         │ optional: multipart call audio
+                                         └──────────────────▶ Rails (Whisper → transcript → AI engine)
 ```
 
 | Layer | Tech |
@@ -97,7 +111,7 @@ process inefficiencies.
 | Frontend dashboard | React 18, TypeScript, Vite, Tailwind, lucide-react |
 | Desktop capture agent | Electron, TypeScript, on-device PII masking |
 | API | Ruby on Rails (API mode), PostgreSQL (JSONB), Sidekiq + Redis |
-| AI / processing | Python, scikit-learn, frequent-sequence pattern detection, pluggable LLM |
+| AI / processing | Python, scikit-learn, frequent-sequence pattern detection, pluggable LLM, transcript-based SOP generation (`/generate_from_transcript`) |
 | Integrations | Google Workspace, Microsoft 365, generic REST |
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for a deeper walk-through.
@@ -108,8 +122,8 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for a deeper walk-through.
 
 1. A user performs a task as usual.
 2. Vopro captures workflow events in the background (with masking).
-3. The system detects repeatable patterns.
-4. AI generates an SOP draft.
+3. The system detects repeatable patterns from events **or** processes **uploaded call audio** (Whisper → transcript → AI engine) for a draft SOP.
+4. AI generates or refines an SOP draft.
 5. The user reviews and edits the SOP if necessary.
 6. The SOP is stored and continuously updated.
 
@@ -137,13 +151,21 @@ Frontend will be at <http://localhost:5173>, API at <http://localhost:3000>.
 
 ### Manual install
 
-Redis must be running for Sidekiq background jobs (`generate_sop`, event ingestion, etc.). Start **`redis-server`** (or `brew services start redis`, or `docker compose up -d redis`), then run a worker:
+Redis must be running for Sidekiq background jobs (`generate_sop`, **`process_call_recording`**, event ingestion, etc.). Start **`redis-server`** (or `brew services start redis`, or `docker compose up -d redis`), then run a worker:
 
 ```bash
 cd backend && bundle exec sidekiq
 ```
 
 Run Rails and Sidekiq in separate terminals alongside Redis.
+
+After pulling new changes, run **`bundle install`** again under **`backend/`** so Ruby gems stay in sync (PDF export uses **`prawn`** and **`matrix`**). Restart **`bin/rails server`** whenever **`Gemfile`** / **`Gemfile.lock`** changes.
+
+If **`bundle exec rspec`** fails with **environment mismatch** (`ActiveRecord::EnvironmentMismatchError`), point the DB at test once:
+
+```bash
+cd backend && bin/rails db:environment:set RAILS_ENV=test
+```
 
 ```bash
 # Frontend
@@ -154,10 +176,11 @@ cd ../backend && bundle install
 bin/rails db:create db:migrate
 bin/rails server
 
-# AI engine
+# AI engine (HTTP API — Rails/Sidekiq call /detect, /generate, /generate_from_transcript)
 cd ../ai-engine && python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python -m vopro_ai.worker
+uvicorn vopro_ai.api:app --reload --host 0.0.0.0 --port 8000
+# Optional: OPENAI_API_KEY for LLM-polished SOPs (ai-engine) and Whisper transcription (backend — see .env.example).
 
 # Agent (optional)
 cd ../agent && npm install && npm run dev
@@ -267,7 +290,7 @@ from source control — so you can rotate them without redeploying code. The
 
 **Phase 1 (MVP) — current**
 - Workflow capture
-- SOP auto-generation
+- SOP auto-generation (from events or optional call-audio upload → transcript)
 - Manual editing
 
 **Phase 2**

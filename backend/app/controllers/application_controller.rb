@@ -9,6 +9,7 @@ class ApplicationController < ActionController::API
   # is down — surface a clear 503 instead of a generic 500 (common local-dev gap).
   rescue_from RedisClient::CannotConnectError,     with: :handle_redis_unavailable
   rescue_from Redis::CannotConnectError,           with: :handle_redis_unavailable
+  rescue_from SopExporter::PdfUnavailable,         with: :handle_pdf_dependency_missing
 
   rescue_from ActiveRecord::RecordNotFound,        with: :handle_not_found
   rescue_from ActiveRecord::RecordInvalid,         with: :handle_unprocessable
@@ -143,6 +144,27 @@ class ApplicationController < ActionController::API
       code: "redis_unavailable",
       message: message,
       details: details,
+    )
+  end
+
+  def handle_pdf_dependency_missing(error)
+    Rails.logger.error("[#{request.request_id}] #{error.class}: #{error.message}")
+
+    render_error(
+      status: :service_unavailable,
+      code: "pdf_dependency_missing",
+      message:
+        if Rails.env.production?
+          "PDF export is temporarily unavailable."
+        else
+          error.message.to_s
+        end,
+      details:
+        if Rails.env.production?
+          nil
+        else
+          { hint: "cd backend && bundle install && bin/rails server (use bundle exec if needed)" }
+        end,
     )
   end
 

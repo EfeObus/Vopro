@@ -1,4 +1,8 @@
 class SopExporter
+  # Raised when `matrix` / `prawn` gems are missing from the Ruby load path
+  # (run `bundle install` in `backend/` and restart Rails).
+  class PdfUnavailable < StandardError; end
+
   def self.call(sop, format: :markdown)
     new(sop).export(format)
   end
@@ -63,7 +67,15 @@ class SopExporter
   end
 
   def to_pdf
-    require "prawn"
+    begin
+      require "matrix"
+      require "prawn"
+    rescue LoadError => e
+      raise PdfUnavailable,
+            "PDF export needs the `prawn` and `matrix` gems. From the backend folder run `bundle install`, " \
+            "then restart the Rails server (stop `bin/rails server` and start it again). Original error: #{e.message}"
+    end
+
     Prawn::Fonts::AFM.hide_m17n_warning = true if defined?(Prawn::Fonts::AFM)
 
     Prawn::Document.new(page_size: "LETTER", margin: [54, 54, 54, 54]) do |pdf|

@@ -4,9 +4,13 @@ import type {
   DetectedWorkflow,
   Integration,
   IntegrationProvider,
+  IntegrationStatus,
   Invitation,
   InvitationPreview,
   Sop,
+  SopStatus,
+  SopStep,
+  SopVersion,
   UserRole,
 } from '@/types';
 import {
@@ -33,7 +37,79 @@ export interface AnalyticsOverview {
   activeUsers: number;
   runsByDay: AnalyticsPoint[];
   bottlenecks: BottleneckRow[];
+  runsLast7d: number;
+  runsPrev7d: number;
+  runsWeekOverWeekPercent: number | null;
+  publishedSopsUpdatedLast7d: number;
+  estimatedHoursSaved: number;
 }
+
+export interface WorkspacePayload {
+  id: string;
+  name: string;
+  slug: string;
+  settings: WorkspaceSettings;
+}
+
+/** Call audio upload → Whisper transcription → ai-engine SOP draft */
+export interface CallRecordingRow {
+  id: string;
+  status: string;
+  titleHint: string | null;
+  transcript: string | null;
+  /** True when the viewer cannot read transcript (e.g. viewer role, another user's upload). */
+  transcriptRedacted?: boolean;
+  errorMessage: string | null;
+  sopId: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Admin workspace / billing / verification snapshot (GET /api/v1/organization). */
+export interface OrganizationSnapshot {
+  id: string;
+  name: string;
+  slug: string;
+  claimedDomain: string | null;
+  domainVerified: boolean;
+  domainVerifiedAt: string | null;
+  billingPlan: string;
+  trialEndsAt: string | null;
+  trialActive: boolean;
+  seatsLimit: number;
+  seatsUsed: number;
+  dnsTxtHost: string | null;
+  dnsTxtValue: string | null;
+}
+
+export interface WorkspaceSettings {
+  auto_generate_sop: boolean;
+  event_retention_days: number;
+  capture_web_enabled: boolean;
+  capture_desktop_enabled: boolean;
+  capture_terminal_enabled: boolean;
+  capture_pause_incognito: boolean;
+  masking_rules?: Array<{ id: string; enabled: boolean }>;
+}
+
+/** Mock/offline defaults — aligned with backend `Workspace::SETTINGS_DEFAULTS` / masking ids. */
+const MOCK_DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
+  auto_generate_sop: false,
+  event_retention_days: 30,
+  capture_web_enabled: true,
+  capture_desktop_enabled: true,
+  capture_terminal_enabled: false,
+  capture_pause_incognito: true,
+  masking_rules: [
+    { id: 'email', enabled: true },
+    { id: 'phone', enabled: true },
+    { id: 'cc', enabled: true },
+    { id: 'gov', enabled: true },
+    { id: 'token', enabled: true },
+    { id: 'password', enabled: true },
+  ],
+};
 
 /**
  * Strongly-typed error thrown by `fetchJson` / `fetchBlob`.
@@ -114,6 +190,33 @@ async function buildApiError(res: Response): Promise<ApiError> {
     message: text || `Request failed: ${res.status}`,
     retryAfter: Number(retryAfterHeader) || undefined,
   });
+}
+
+/** Multipart POST (e.g. call audio). Do not set Content-Type — browser sets boundary. */
+async function fetchFormPost<T>(path: string, form: FormData): Promise<T> {
+  const token = readToken();
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, { method: 'POST', body: form, headers });
+  } catch (cause) {
+    throw new ApiError({
+      status: 0,
+      code: 'network_error',
+      message: cause instanceof Error ? cause.message : 'Network request failed',
+    });
+  }
+
+  if (res.status === 401) {
+    clearAuth();
+    throw await buildApiError(res);
+  }
+  if (!res.ok) {
+    throw await buildApiError(res);
+  }
+  return (await res.json()) as T;
 }
 
 async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -199,6 +302,70 @@ export const api = {
       body: JSON.stringify({ token, password }),
     });
   },
+
+  async signup(payload: {
+    workspaceName: string;
+    slug?: string;
+    claimedDomain: string;
+    adminEmail: string;
+    adminPassword: string;
+    adminName: string;
+    billingPlan?: string;
+    seatsLimit?: number;
+  }): Promise<{ token: string; user: AuthUser; workspace: OrganizationSnapshot }> {
+    if (USE_MOCK) {
+      return {
+        token: 'mock-signup',
+        user: {
+          id: 'u_new',
+          email: payload.adminEmail,
+          name: payload.adminName,
+          role: 'admin',
+          workspaceId: 'ws_mock',
+          captureConsentAccepted: false,
+        },
+        workspace: {
+          id: 'ws_mock',
+          name: payload.workspaceName,
+          slug: payload.slug ?? 'demo',
+          claimedDomain: payload.claimedDomain,
+          domainVerified: false,
+          domainVerifiedAt: null,
+          billingPlan: 'free_trial',
+          trialEndsAt: new Date(Date.now() + 14 * 864e5).toISOString(),
+          trialActive: true,
+          seatsLimit: 50,
+          seatsUsed: 1,
+          dnsTxtHost: `_vopro.${payload.claimedDomain}`,
+          dnsTxtValue: null,
+        },
+      };
+    }
+    return fetchJson('/api/v1/signup', {
+      method: 'POST',
+      body: JSON.stringify({
+        signup: {
+          workspace_name: payload.workspaceName,
+          slug: payload.slug,
+          claimed_domain: payload.claimedDomain,
+          admin_email: payload.adminEmail,
+          admin_password: payload.adminPassword,
+          admin_name: payload.adminName,
+          billing_plan: payload.billingPlan,
+          seats_limit: payload.seatsLimit,
+        },
+      }),
+    });
+  },
+
+  async verifySignupEmail(token: string): Promise<{ ok: boolean; workspaceId: string }> {
+    if (USE_MOCK) return { ok: true, workspaceId: 'ws_mock' };
+    return fetchJson('/api/v1/signup/verify_email', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    });
+  },
+
   async refreshToken(): Promise<{ token: string }> {
     if (USE_MOCK) return { token: '' };
     return fetchJson('/api/v1/auth/refresh', { method: 'POST' });
@@ -222,6 +389,7 @@ export const api = {
           email: 'invited@example.com',
           role: 'viewer',
           workspaceId: 'ws_mock',
+          captureConsentAccepted: false,
         },
       };
     }
@@ -266,6 +434,68 @@ export const api = {
     await fetchJson<void>('/api/v1/me', { method: 'DELETE' });
   },
 
+  async recordCaptureConsent(): Promise<void> {
+    if (USE_MOCK) return;
+    await fetchJson<void>('/api/v1/me/consents', {
+      method: 'POST',
+      body: JSON.stringify({ consent_key: 'workflow_capture_policy_v1' }),
+    });
+  },
+
+  async getOrganization(): Promise<OrganizationSnapshot> {
+    if (USE_MOCK) {
+      return {
+        id: 'ws_mock',
+        name: 'Demo Workspace',
+        slug: 'demo',
+        claimedDomain: 'vopro.local',
+        domainVerified: true,
+        domainVerifiedAt: new Date().toISOString(),
+        billingPlan: 'professional',
+        trialEndsAt: null,
+        trialActive: false,
+        seatsLimit: 50,
+        seatsUsed: 8,
+        dnsTxtHost: '_vopro.vopro.local',
+        dnsTxtValue: null,
+      };
+    }
+    return fetchJson<OrganizationSnapshot>('/api/v1/organization');
+  },
+
+  async startDnsVerification(): Promise<{ dnsTxtHost: string; dnsTxtValue: string }> {
+    if (USE_MOCK) {
+      return { dnsTxtHost: '_vopro.example.com', dnsTxtValue: 'vopro-verify=mock' };
+    }
+    return fetchJson<{ dnsTxtHost: string; dnsTxtValue: string }>(
+      '/api/v1/organization/domain_dns/start',
+      { method: 'POST' },
+    );
+  },
+
+  async verifyDns(): Promise<OrganizationSnapshot> {
+    if (USE_MOCK) {
+      return {
+        id: 'ws_mock',
+        name: 'Demo Workspace',
+        slug: 'demo',
+        claimedDomain: 'vopro.local',
+        domainVerified: true,
+        domainVerifiedAt: new Date().toISOString(),
+        billingPlan: 'professional',
+        trialEndsAt: null,
+        trialActive: false,
+        seatsLimit: 50,
+        seatsUsed: 8,
+        dnsTxtHost: '_vopro.vopro.local',
+        dnsTxtValue: null,
+      };
+    }
+    return fetchJson<OrganizationSnapshot>('/api/v1/organization/domain_dns/verify', {
+      method: 'POST',
+    });
+  },
+
   // ---- sops ----------------------------------------------------------------
   async listSops(): Promise<Sop[]> {
     if (USE_MOCK) return MOCK_SOPS;
@@ -302,6 +532,56 @@ export const api = {
     return fetchBlob(`/api/v1/sops/${id}/export?format=${format}`);
   },
 
+  async createSop(payload: {
+    title: string;
+    description?: string;
+    status?: SopStatus;
+    tags?: string[];
+    steps?: SopStep[];
+  }): Promise<Sop> {
+    if (USE_MOCK) {
+      const id = `sop_local_${Date.now()}`;
+      const sop: Sop = {
+        id,
+        title: payload.title,
+        description: payload.description ?? '',
+        status: payload.status ?? 'draft',
+        ownerName: 'You',
+        ownerInitials: 'YO',
+        tags: payload.tags ?? [],
+        steps: payload.steps ?? [],
+        versions: [],
+        lastUpdated: new Date().toISOString(),
+        contributors: 1,
+        runsObserved: 0,
+        averageDurationSec: 0,
+        confidence: 0,
+      };
+      MOCK_SOPS.unshift(sop);
+      return sop;
+    }
+    return fetchJson<Sop>('/api/v1/sops', {
+      method: 'POST',
+      body: JSON.stringify({ sop: payload }),
+    });
+  },
+
+  async deleteSop(id: string): Promise<void> {
+    if (USE_MOCK) {
+      const idx = MOCK_SOPS.findIndex((s) => s.id === id);
+      if (idx >= 0) MOCK_SOPS.splice(idx, 1);
+      return;
+    }
+    await fetchJson<void>(`/api/v1/sops/${id}`, { method: 'DELETE' });
+  },
+
+  async listSopVersions(id: string): Promise<SopVersion[]> {
+    if (USE_MOCK) {
+      return MOCK_SOPS.find((s) => s.id === id)?.versions ?? [];
+    }
+    return fetchJson<SopVersion[]>(`/api/v1/sops/${id}/versions`);
+  },
+
   // ---- workflows -----------------------------------------------------------
   async listDetected(): Promise<DetectedWorkflow[]> {
     if (USE_MOCK) return MOCK_DETECTED;
@@ -320,6 +600,31 @@ export const api = {
     return fetchJson(`/api/v1/workflows/${id}/generate_sop`, { method: 'POST' });
   },
 
+  async getWorkflow(id: string): Promise<DetectedWorkflow> {
+    if (USE_MOCK) {
+      const w = MOCK_DETECTED.find((d) => d.id === id);
+      if (!w) throw new ApiError({ status: 404, code: 'not_found', message: 'Workflow not found' });
+      return w;
+    }
+    return fetchJson<DetectedWorkflow>(`/api/v1/workflows/${id}`);
+  },
+
+  async updateWorkflow(
+    id: string,
+    patch: { title?: string; status?: DetectedWorkflow['status'] },
+  ): Promise<DetectedWorkflow> {
+    if (USE_MOCK) {
+      const idx = MOCK_DETECTED.findIndex((d) => d.id === id);
+      if (idx < 0) throw new ApiError({ status: 404, code: 'not_found', message: 'Workflow not found' });
+      MOCK_DETECTED[idx] = { ...MOCK_DETECTED[idx], ...patch };
+      return MOCK_DETECTED[idx];
+    }
+    return fetchJson<DetectedWorkflow>(`/api/v1/workflows/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ workflow: patch }),
+    });
+  },
+
   // ---- integrations --------------------------------------------------------
   async listIntegrations(): Promise<Integration[]> {
     if (USE_MOCK) return MOCK_INTEGRATIONS;
@@ -334,16 +639,48 @@ export const api = {
     await fetchJson<void>(`/api/v1/integrations/${id}`, { method: 'DELETE' });
   },
 
+  async updateIntegration(
+    id: string,
+    patch: {
+      status?: IntegrationStatus;
+      settings?: Record<string, unknown>;
+      secrets?: Record<string, unknown>;
+    },
+  ): Promise<Integration> {
+    if (USE_MOCK) {
+      const idx = MOCK_INTEGRATIONS.findIndex((i) => i.id === id);
+      if (idx < 0) throw new ApiError({ status: 404, code: 'not_found', message: 'Integration not found' });
+      const prev = MOCK_INTEGRATIONS[idx];
+      MOCK_INTEGRATIONS[idx] = {
+        ...prev,
+        ...patch,
+        settings: patch.settings ? { ...prev.settings, ...patch.settings } : prev.settings,
+      };
+      return MOCK_INTEGRATIONS[idx];
+    }
+    return fetchJson<Integration>(`/api/v1/integrations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ integration: patch }),
+    });
+  },
+
   // ---- analytics -----------------------------------------------------------
   async analytics(): Promise<AnalyticsOverview> {
     if (USE_MOCK) {
+      const runsLast30d = MOCK_ANALYTICS.reduce((s, p) => s + p.runs, 0);
+      const runsLast7d = MOCK_ANALYTICS.reduce((s, p) => s + p.runs, 0);
       return {
         sopsTotal: MOCK_SOPS.length,
-        runsLast30d: MOCK_ANALYTICS.reduce((s, p) => s + p.runs, 0),
+        runsLast30d,
         automationMinutesSaved: 1240,
         activeUsers: 18,
         runsByDay: MOCK_ANALYTICS,
         bottlenecks: MOCK_BOTTLENECKS,
+        runsLast7d,
+        runsPrev7d: Math.max(1, Math.round(runsLast7d * 0.85)),
+        runsWeekOverWeekPercent: 12.4,
+        publishedSopsUpdatedLast7d: 3,
+        estimatedHoursSaved: Math.round((1240 / 60) * 10) / 10,
       };
     }
     return fetchJson<AnalyticsOverview>('/api/v1/analytics/overview');
@@ -351,6 +688,80 @@ export const api = {
   async bottlenecks(): Promise<BottleneckRow[]> {
     if (USE_MOCK) return MOCK_BOTTLENECKS;
     return fetchJson<BottleneckRow[]>('/api/v1/analytics/bottlenecks');
+  },
+
+  async getWorkspace(): Promise<WorkspacePayload> {
+    if (USE_MOCK) {
+      return {
+        id: 'ws_mock',
+        name: 'Demo Workspace',
+        slug: 'demo',
+        settings: { ...MOCK_DEFAULT_WORKSPACE_SETTINGS },
+      };
+    }
+    return fetchJson<WorkspacePayload>('/api/v1/workspace');
+  },
+
+  async updateWorkspace(patch: Partial<WorkspaceSettings>): Promise<WorkspacePayload> {
+    if (USE_MOCK) {
+      return {
+        id: 'ws_mock',
+        name: 'Demo Workspace',
+        slug: 'demo',
+        settings: { ...MOCK_DEFAULT_WORKSPACE_SETTINGS, ...patch },
+      };
+    }
+    return fetchJson<WorkspacePayload>('/api/v1/workspace', {
+      method: 'PATCH',
+      body: JSON.stringify({ workspace: { settings: patch } }),
+    });
+  },
+
+  async listCallRecordings(): Promise<CallRecordingRow[]> {
+    if (USE_MOCK) return [];
+    return fetchJson<CallRecordingRow[]>('/api/v1/call_recordings');
+  },
+
+  async uploadCallRecording(file: File, titleHint?: string): Promise<CallRecordingRow> {
+    if (USE_MOCK) {
+      return {
+        id: 'mock_cr',
+        status: 'completed',
+        titleHint: titleHint ?? null,
+        transcript: 'Demo transcript.',
+        transcriptRedacted: false,
+        errorMessage: null,
+        sopId: null,
+        metadata: {},
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    const fd = new FormData();
+    fd.append('audio', file);
+    if (titleHint?.trim()) fd.append('title_hint', titleHint.trim());
+    return fetchFormPost<CallRecordingRow>('/api/v1/call_recordings', fd);
+  },
+
+  async createIntegration(payload: {
+    provider: IntegrationProvider;
+    status?: IntegrationStatus;
+    settings?: Record<string, unknown>;
+    secrets?: Record<string, unknown>;
+  }): Promise<Integration> {
+    if (USE_MOCK) {
+      return {
+        id: `int_${Date.now()}`,
+        provider: payload.provider,
+        status: payload.status ?? 'connected',
+        settings: payload.settings ?? {},
+        createdAt: new Date().toISOString(),
+      };
+    }
+    return fetchJson<Integration>('/api/v1/integrations', {
+      method: 'POST',
+      body: JSON.stringify({ integration: payload }),
+    });
   },
 };
 

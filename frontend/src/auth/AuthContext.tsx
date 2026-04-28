@@ -35,6 +35,8 @@ export interface AuthUser {
   name: string;
   role: string;
   workspaceId: string;
+  /** Present when API returns workflow capture consent ledger state. */
+  captureConsentAccepted?: boolean;
 }
 
 interface AuthContextValue {

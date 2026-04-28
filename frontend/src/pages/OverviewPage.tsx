@@ -21,15 +21,19 @@ import {
 } from 'recharts';
 import PageHeader from '@/components/PageHeader';
 import StatCard from '@/components/StatCard';
-import { api } from '@/lib/api';
+import { api, type AnalyticsOverview, type OrganizationSnapshot } from '@/lib/api';
+import { useAuth } from '@/auth/AuthContext';
 import type { AnalyticsPoint, BottleneckRow, DetectedWorkflow, Sop } from '@/types';
 import { formatDuration, formatPercent, formatRelative } from '@/lib/format';
 
 export default function OverviewPage() {
+  const { user } = useAuth();
+  const [org, setOrg] = useState<OrganizationSnapshot | null>(null);
   const [sops, setSops] = useState<Sop[]>([]);
   const [detected, setDetected] = useState<DetectedWorkflow[]>([]);
   const [runsByDay, setRunsByDay] = useState<AnalyticsPoint[]>([]);
   const [bottlenecks, setBottlenecks] = useState<BottleneckRow[]>([]);
+  const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
 
   useEffect(() => {
     void Promise.all([api.listSops(), api.listDetected(), api.analytics()]).then(
@@ -38,12 +42,29 @@ export default function OverviewPage() {
         setDetected(d);
         setRunsByDay(a.runsByDay);
         setBottlenecks(a.bottlenecks);
+        setOverview(a);
       },
     );
   }, []);
 
+  useEffect(() => {
+    if (user?.role !== 'admin') return;
+    api
+      .getOrganization()
+      .then(setOrg)
+      .catch(() => undefined);
+  }, [user?.role]);
+
   const totalRuns = runsByDay.reduce((acc, p) => acc + p.runs, 0);
   const publishedSops = sops.filter((s) => s.status === 'published').length;
+  const runsLast7d = overview?.runsLast7d ?? totalRuns;
+  const wow = overview?.runsWeekOverWeekPercent;
+  const publishedUpdatedWeek = overview?.publishedSopsUpdatedLast7d ?? 0;
+  const hoursSaved = overview?.estimatedHoursSaved ?? 0;
+
+  const trialEndsMs = org?.trialEndsAt ? new Date(org.trialEndsAt).getTime() : null;
+  const trialEndingSoon =
+    Boolean(org?.trialActive && trialEndsMs != null && trialEndsMs > Date.now() && trialEndsMs - Date.now() < 7 * 864e5);
 
   return (
     <div className="px-8 py-8 max-w-[1280px] mx-auto">
@@ -58,11 +79,54 @@ export default function OverviewPage() {
         }
       />
 
+      {user?.role === 'admin' && org && !org.domainVerified && (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 flex flex-wrap items-center justify-between gap-3">
+          <span>
+            Verify your organization&apos;s email domain to unlock full workspace controls.
+          </span>
+          <Link to="/organization" className="btn-outline bg-white text-sm py-1.5 shrink-0">
+            Verify domain
+          </Link>
+        </div>
+      )}
+
+      {user?.role === 'admin' && trialEndingSoon && org?.trialEndsAt && (
+        <div className="mb-6 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-950 flex flex-wrap items-center justify-between gap-3">
+          <span>
+            Your trial ends on {new Date(org.trialEndsAt).toLocaleDateString()}. Contact us to keep your plan active.
+          </span>
+          <Link to="/organization" className="btn-outline bg-white text-sm py-1.5 shrink-0">
+            View plan
+          </Link>
+        </div>
+      )}
+
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard icon={BookOpen} label="Published SOPs" value={String(publishedSops)} delta="+3 this week" tone="positive" />
+        <StatCard
+          icon={BookOpen}
+          label="Published SOPs"
+          value={String(publishedSops)}
+          delta={
+            publishedUpdatedWeek > 0
+              ? `+${publishedUpdatedWeek} updated last 7 days`
+              : 'none updated last 7 days'
+          }
+          tone="positive"
+        />
         <StatCard icon={Sparkles} label="New patterns" value={String(detected.length)} delta="awaiting review" />
-        <StatCard icon={Activity} label="Runs observed" value={totalRuns.toLocaleString()} delta="last 7 days" />
-        <StatCard icon={Clock} label="Time saved (est.)" value="42h" delta="this month" tone="positive" />
+        <StatCard
+          icon={Activity}
+          label="Runs observed"
+          value={runsLast7d.toLocaleString()}
+          delta="last 7 days"
+        />
+        <StatCard
+          icon={Clock}
+          label="Time saved (est.)"
+          value={`${hoursSaved}h`}
+          delta="last 30 days"
+          tone="positive"
+        />
       </section>
 
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
@@ -73,7 +137,10 @@ export default function OverviewPage() {
               <p className="text-sm text-ink-500">Daily workflow runs and SOPs published.</p>
             </div>
             <span className="chip bg-brand-50 text-brand-700">
-              <TrendingUp className="size-3.5" /> +18% vs prior week
+              <TrendingUp className="size-3.5" />{' '}
+              {wow == null
+                ? '— vs prior week'
+                : `${wow >= 0 ? '+' : ''}${wow}% vs prior week`}
             </span>
           </div>
           <div className="h-72">
@@ -88,7 +155,7 @@ export default function OverviewPage() {
                 />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="runs" name="Runs observed" fill="#4a64f5" radius={[6, 6, 0, 0]} />
-                <Bar dataKey="sops" name="SOPs published" fill="#22c55e" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="sops" name="SOPs updated" fill="#22c55e" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

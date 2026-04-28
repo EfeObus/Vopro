@@ -22,6 +22,7 @@ uvicorn vopro_ai.api:app --reload   # http://localhost:8000
 | GET  | `/health` |  | `{ status, version }` |
 | POST | `/detect` | `{ events: [...] }` | `{ candidates: [WorkflowCandidate] }` |
 | POST | `/generate` | `{ workflow, events }` | `GenerateResponse` |
+| POST | `/generate_from_transcript` | `{ transcript, title_hint? }` | `GenerateResponse` (SOP draft from call/meeting text; invoked by **`ProcessCallRecordingJob`**) |
 
 ## LLM provider
 

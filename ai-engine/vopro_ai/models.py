@@ -30,6 +30,8 @@ class WorkflowCandidate(BaseModel):
     last_seen: datetime
     confidence: float
     sample_event_ids: list[str] = Field(default_factory=list)
+    #: Up to MAX_LINKED_EVENT_IDS captured row IDs used to attach runs to a Workflow in Rails.
+    linked_event_ids: list[str] = Field(default_factory=list)
 
 
 class DetectResponse(BaseModel):
@@ -45,6 +47,11 @@ class WorkflowRef(BaseModel):
 class GenerateRequest(BaseModel):
     workflow: WorkflowRef
     events: list[Event]
+
+
+class TranscriptGenerateRequest(BaseModel):
+    transcript: str
+    title_hint: str | None = None
 
 
 class SopStep(BaseModel):

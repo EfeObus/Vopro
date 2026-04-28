@@ -1,0 +1,14 @@
+# RuboCop — backend API (Rails 7.1, Ruby 3.2)
+# Keeps VS Code / Ruby LSP Problems aligned with CLI runs.
+
+plugins:
+  - rubocop-rails
+  - rubocop-rspec
+
+AllCops:
+  NewCops: enable
+  TargetRubyVersion: 3.2
+  SuggestExtensions: false
+  Exclude:
+    - "vendor/**/*"
+    - "tmp/**/*"

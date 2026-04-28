@@ -2,26 +2,43 @@ import { NavLink, Outlet } from 'react-router-dom';
 import {
   Activity,
   BookOpen,
+  Building2,
   Plug,
   Settings,
   Sparkles,
-  CircleDot,
   LogOut,
   Timer,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { useAuth } from '@/auth/AuthContext';
+import CaptureStatusCard from '@/components/CaptureStatusCard';
 
-const NAV = [
+type NavItem = {
+  to: string;
+  label: string;
+  icon: typeof Activity;
+  end?: boolean;
+};
+
+const NAV_BASE: NavItem[] = [
   { to: '/', label: 'Overview', icon: Activity, end: true },
   { to: '/sops', label: 'SOPs', icon: BookOpen },
   { to: '/workflows', label: 'Detected workflows', icon: Sparkles },
   { to: '/bottlenecks', label: 'Bottlenecks', icon: Timer },
   { to: '/integrations', label: 'Integrations', icon: Plug },
-  { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
+const NAV_ADMIN: NavItem = { to: '/organization', label: 'Organization', icon: Building2 };
+const NAV_SETTINGS: NavItem = { to: '/settings', label: 'Settings', icon: Settings };
+
 export default function AppLayout() {
+  const { user } = useAuth();
+  const navItems = [
+    ...NAV_BASE,
+    ...(user?.role === 'admin' ? [NAV_ADMIN] : []),
+    NAV_SETTINGS,
+  ];
+
   return (
     <div className="min-h-screen flex bg-ink-50">
       <aside className="w-64 shrink-0 border-r border-ink-100 bg-white flex flex-col">
@@ -34,7 +51,7 @@ export default function AppLayout() {
         </div>
 
         <nav className="flex-1 p-3 space-y-1">
-          {NAV.map((item) => (
+          {navItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -102,17 +119,3 @@ function UserCard() {
   );
 }
 
-function CaptureStatusCard() {
-  return (
-    <div className="m-3 mt-0 p-3 rounded-lg border border-ink-100 bg-ink-50">
-      <div className="flex items-center gap-2 mb-1">
-        <CircleDot className="size-3.5 text-emerald-500 animate-pulse" />
-        <span className="text-xs font-semibold text-ink-700">Capture active</span>
-      </div>
-      <div className="text-xs text-ink-500">
-        Agent · this device · 4 apps opted in
-      </div>
-      <button className="btn-outline mt-2 w-full justify-center text-xs">Pause capture</button>
-    </div>
-  );
-}

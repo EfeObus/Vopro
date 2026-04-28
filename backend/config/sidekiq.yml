@@ -12,3 +12,6 @@
     refresh_sops:
       cron: "0 * * * *"
       class: RefreshSopJob
+    integration_sync:
+      cron: "25 * * * *"
+      class: IntegrationSyncJob

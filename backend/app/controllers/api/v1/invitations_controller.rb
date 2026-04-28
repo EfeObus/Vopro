@@ -30,6 +30,20 @@ module Api
           )
         end
 
+        ws = current_user.workspace
+        if ws.claimed_domain.present?
+          invite_domain = email.split("@").last.to_s.downcase.sub(/\Awww\./, "")
+          claimed = ws.claimed_domain.to_s.downcase.sub(/\Awww\./, "")
+          if invite_domain != claimed
+            return render_error(
+              status: :unprocessable_entity,
+              code: "domain_mismatch",
+              message: "Invitation email must use the organization's claimed domain",
+              details: { claimed_domain: claimed }
+            )
+          end
+        end
+
         invitation = current_user.workspace.invitations.create!(
           email: email,
           role: role,

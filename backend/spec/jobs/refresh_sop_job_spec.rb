@@ -29,7 +29,7 @@ RSpec.describe RefreshSopJob, type: :job do
     expect {
       described_class.new.perform
     }.to change { sop.reload.status }.from("published").to("needs_review")
-     .and change(SopVersion, :count).by(1)
+     .and change { sop.reload.sop_versions.count }.by(1)
   end
 
   it "does not change anything when steps match" do

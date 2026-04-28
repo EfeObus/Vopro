@@ -41,7 +41,13 @@ class AiEngineClient
     request(:post, "/generate", body: { workflow: workflow, events: events })
   end
 
-  def self.request(verb, path, body: nil)
+  def self.generate_from_transcript(transcript:, title_hint: nil)
+    body = { transcript: transcript.to_s, title_hint: title_hint }
+    # Longer than default — GPT structuring large transcripts can exceed 30s.
+    request(:post, "/generate_from_transcript", body: body, timeout: 120)
+  end
+
+  def self.request(verb, path, body: nil, timeout: nil)
     last_error = nil
     attempt = 0
 
@@ -50,9 +56,12 @@ class AiEngineClient
       began = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
       begin
-        response = send(verb, path,
-                        body: body&.to_json,
-                        headers: { "Content-Type" => "application/json" })
+        http_opts = {
+          body: body&.to_json,
+          headers: { "Content-Type" => "application/json" }
+        }
+        http_opts[:timeout] = timeout if timeout.present?
+        response = send(verb, path, http_opts)
       rescue *RETRYABLE_ERRORS => e
         last_error = e
         wait = backoff(attempt)

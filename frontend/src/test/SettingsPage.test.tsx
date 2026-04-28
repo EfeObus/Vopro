@@ -33,10 +33,10 @@ describe('SettingsPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('updates the retention label when the slider moves', () => {
+  it('updates the retention label when the slider moves', async () => {
     renderPage();
-    const slider = screen.getByRole('slider');
-    fireEvent.change(slider, { target: { value: 60 } });
-    expect(screen.getByText('60 days')).toBeInTheDocument();
+    const slider = await screen.findByRole('slider');
+    fireEvent.change(slider, { target: { value: '60' } });
+    expect(await screen.findByText('60 days')).toBeInTheDocument();
   });
 });

@@ -39,6 +39,8 @@ def test_detects_repeated_sequence_across_users():
     assert top.occurrences >= 3
     assert top.confidence >= 0.5
     assert top.application in {"Salesforce", "Gmail"}
+    assert top.linked_event_ids, "Rails links Workflow rows using linked_event_ids"
+    assert set(top.linked_event_ids) <= {e.id for e in events if e.id}
 
 
 def test_returns_empty_on_no_events():

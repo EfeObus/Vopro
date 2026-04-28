@@ -1,13 +1,13 @@
 FactoryBot.define do
   factory :workspace do
     sequence(:name) { |n| "Workspace #{n}" }
-    sequence(:slug) { |n| "workspace-#{n}" }
+    slug { "workspace-#{SecureRandom.hex(6)}" }
     settings { {} }
   end
 
   factory :user do
     workspace
-    sequence(:email) { |n| "user#{n}@example.com" }
+    sequence(:email) { |n| "user#{n}-#{SecureRandom.hex(4)}@example.com" }
     name { "Test User" }
     role { "editor" }
     password { "vopro1234" }
@@ -27,7 +27,7 @@ FactoryBot.define do
   factory :workflow_event do
     workspace
     user
-    workflow
+    workflow { nil }
     kind { "click" }
     application { "Salesforce" }
     target { "Convert button" }
@@ -59,6 +59,17 @@ FactoryBot.define do
     provider { "google" }
     status { "disconnected" }
     settings { {} }
+  end
+
+  factory :call_recording do
+    workspace
+    user
+    sop { nil }
+    status { "pending" }
+    audio_file_path { "tmp/call_spec_audio.mp3" }
+    audio_content_type { "audio/mpeg" }
+    audio_byte_size { 8 }
+    metadata { {} }
   end
 
   factory :invitation do
