@@ -183,6 +183,66 @@ vopro/
 
 See [`docs/PRIVACY.md`](docs/PRIVACY.md).
 
+### Secrets management & rotation
+
+Vopro deliberately reads every credential from environment variables — never
+from source control — so you can rotate them without redeploying code. The
+[`.env.example`](.env.example) file lists every variable; the ones marked
+`(secret)` need a rotation policy.
+
+**Where secrets live**
+
+- **Local dev**: `.env` (gitignored). Never commit a real `.env`.
+- **Production**: a managed store (AWS Secrets Manager / HashiCorp Vault /
+  GCP Secret Manager / Doppler / 1Password Connect). Inject at boot via
+  the platform's standard env mechanism — do not bake secrets into images.
+- **CI**: GitHub Actions encrypted secrets (Settings → Secrets → Actions).
+  The CI matrix in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+  intentionally runs without real provider keys; only the deterministic
+  paths execute on PRs.
+
+**Rotation cadence**
+
+| Variable                                          | Cadence    | Notes |
+| ------------------------------------------------- | ---------- | ----- |
+| `SECRET_KEY_BASE`                                 | 90 days    | Rails session/cookies. Roll on a deploy. |
+| `JWT_SECRET`                                      | 90 days    | Invalidates existing tokens; use a kid-based accept-both window for a graceful rollover. |
+| `SIDEKIQ_WEB_PASSWORD`                            | 90 days    | `openssl rand -base64 24`. |
+| `AR_ENCRYPTION_PRIMARY_KEY` / `DETERMINISTIC_KEY` / `KEY_DERIVATION_SALT` | 180 days   | Use Rails' multi-key rotation: add new key as `next`, re-encrypt rows, then promote. Never overwrite — encrypted columns will become unreadable. |
+| `OPENAI_API_KEY`                                  | 180 days, immediately on leak | Use a project-scoped key with a spend cap. |
+| `GOOGLE_CLIENT_SECRET` / `MICROSOFT_CLIENT_SECRET` | 180 days   | Rotate from the provider console, then redeploy. |
+| `SENTRY_DSN`                                      | On project re-key | Treat as semi-secret; revoke at source if leaked. |
+
+**Rotation runbook (symmetric secrets)**
+
+1. Mint a new value with the generator command in `.env.example`.
+2. Push it to your secrets manager as the new value, keep the previous as a
+   read-only fallback for the migration window.
+3. Deploy. Tail logs and watch `audit_logs` for `auth.failure` spikes — if
+   `JWT_SECRET` rotated, expect a brief sign-out wave.
+4. After the agreed grace window (24 h is typical), remove the previous
+   value from the secrets manager.
+
+**Rotation runbook (`AR_ENCRYPTION_*`)**
+
+1. `cd backend && bundle exec rails db:encryption:init` to generate keys —
+   record them in your secrets manager as the *next* set, do not yet make
+   them primary.
+2. Configure `config.active_record.encryption.previous` to keep the old
+   keys live for decryption.
+3. Re-encrypt records (`Integration.find_each(&:save!)` or a Sidekiq job).
+4. Promote the new keys to primary, demote the old keys to `previous` for
+   one full backup cycle, then remove them.
+
+**On suspected compromise**
+
+1. Rotate the affected secret immediately (skip the grace window).
+2. Revoke any provider-side credentials (OAuth client, OpenAI key).
+3. Force a global sign-out by also rotating `JWT_SECRET`.
+4. Audit `audit_logs` and integration access logs for the exposure window.
+5. File a privacy notice if PII could have been accessed (see
+   [`docs/PRIVACY.md`](docs/PRIVACY.md)).
+
 ---
 
 ## Use Cases
@@ -222,7 +282,21 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+**Proprietary — All rights reserved.** Vopro is **not** open source. See
+[`LICENSE`](LICENSE) for the full Vopro Proprietary Software License.
+
+In short:
+
+- The source is published for **evaluation and security review only**.
+- Any production, commercial, or internal-business use requires a signed
+  Commercial License from the copyright holder.
+- Forking, redistributing, training ML models on, or hosting the Software as
+  a service is **prohibited** without prior written consent.
+
+For licensing inquiries: **legal@vopro.com**.
+
+Third-party dependencies fetched at build time remain governed by their own
+licenses; this License applies only to materials owned or controlled by Vopro.
 
 ## Contact
 

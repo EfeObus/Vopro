@@ -4,7 +4,7 @@ import type { CapturedEvent } from './types';
 
 // Append-only JSONL buffer on disk. Survives crashes; replayed on startup.
 export class EventBuffer {
-  private filePath: string;
+  readonly filePath: string;
 
   constructor(filePath: string) {
     this.filePath = filePath;
@@ -13,6 +13,13 @@ export class EventBuffer {
   async append(event: CapturedEvent): Promise<void> {
     await fs.mkdir(path.dirname(this.filePath), { recursive: true });
     await fs.appendFile(this.filePath, JSON.stringify(event) + '\n', 'utf8');
+  }
+
+  async appendMany(events: CapturedEvent[]): Promise<void> {
+    if (events.length === 0) return;
+    await fs.mkdir(path.dirname(this.filePath), { recursive: true });
+    const lines = events.map((e) => JSON.stringify(e)).join('\n') + '\n';
+    await fs.appendFile(this.filePath, lines, 'utf8');
   }
 
   async readAll(): Promise<CapturedEvent[]> {

@@ -28,12 +28,18 @@ services:
   backend:
     build:
       context: ./backend
-    command: bin/rails server -b 0.0.0.0 -p 3000
+    entrypoint: ["/app/bin/docker-entrypoint"]
+    command: ["bin/rails", "server", "-b", "0.0.0.0", "-p", "3000"]
     environment:
       DATABASE_URL: postgres://vopro:vopro@postgres:5432/vopro_development
       REDIS_URL: redis://redis:6379/0
       RAILS_ENV: development
       AI_ENGINE_URL: http://ai-engine:8000
+      VOPRO_AI_BASE_URL: http://ai-engine:8000
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me}
+      SIDEKIQ_WEB_USER: ${SIDEKIQ_WEB_USER:-admin}
+      SIDEKIQ_WEB_PASSWORD: ${SIDEKIQ_WEB_PASSWORD:-change-me}
+      RUN_SEED_ON_BOOT: ${RUN_SEED_ON_BOOT:-1}
     ports:
       - "3000:3000"
     depends_on:
@@ -47,13 +53,19 @@ services:
   sidekiq:
     build:
       context: ./backend
-    command: bundle exec sidekiq
+    entrypoint: ["/app/bin/docker-entrypoint"]
+    command: ["bundle", "exec", "sidekiq"]
     environment:
       DATABASE_URL: postgres://vopro:vopro@postgres:5432/vopro_development
       REDIS_URL: redis://redis:6379/0
       RAILS_ENV: development
       AI_ENGINE_URL: http://ai-engine:8000
+      VOPRO_AI_BASE_URL: http://ai-engine:8000
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me}
+      SKIP_DB_MIGRATE: "1"
     depends_on:
+      backend:
+        condition: service_started
       postgres:
         condition: service_healthy
       redis:

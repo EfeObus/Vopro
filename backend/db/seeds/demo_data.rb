@@ -245,13 +245,25 @@ module Vopro
 
       def seed_recent_events(workspace, users)
         # Light synthetic event stream over the last 7 days so the analytics
-        # endpoint has something to chew on.
-        triage_workflow = workspace.workflows.find_by(application: "Zendesk")
-        author = users[3] # Lena
-        return unless triage_workflow && author
-
+        # endpoint has something to chew on, plus deliberate decision-fork
+        # branches so RefreshSopJob and the bottlenecks view have data to
+        # latch onto.
         existing = workspace.workflow_events.count
         return if existing > 100 # idempotent guard
+
+        events = []
+        events.concat(triage_events(workspace, users))
+        events.concat(ap_invoice_decision_events(workspace, users))
+        events.concat(onboarding_decision_events(workspace, users))
+
+        WorkflowEvent.insert_all(events) if events.any?
+      end
+
+      # Tier-1 triage: simple linear flow over a week.
+      def triage_events(workspace, users)
+        triage_workflow = workspace.workflows.find_by(application: "Zendesk")
+        author = users[3] # Lena
+        return [] unless triage_workflow && author
 
         events = []
         7.times do |day_offset|
@@ -259,29 +271,117 @@ module Vopro
           runs_today = [124, 156, 142, 188, 174, 56, 41][day_offset] / 8
           runs_today.times do |i|
             t = day + (i * 3.minutes) + (rand(60).seconds)
-            base = [
-              { kind: "navigation", target: "/tickets", occurred_at: t },
-              { kind: "click",      target: "Apply T1 macro", occurred_at: t + 30.seconds },
-              { kind: "form_submit", target: "Reply", occurred_at: t + 60.seconds }
-            ]
-            base.each do |e|
-              events << {
-                workspace_id: workspace.id,
-                user_id: author.id,
-                workflow_id: triage_workflow.id,
-                kind: e[:kind],
-                application: "Zendesk",
-                target: e[:target],
-                payload: {},
-                occurred_at: e[:occurred_at],
-                created_at: e[:occurred_at],
-                updated_at: e[:occurred_at]
-              }
+            [
+              { kind: "navigation",  target: "/tickets",         occurred_at: t },
+              { kind: "click",       target: "Apply T1 macro",   occurred_at: t + 30.seconds },
+              { kind: "form_submit", target: "Reply",            occurred_at: t + 60.seconds }
+            ].each do |e|
+              events << base_event(workspace, author, triage_workflow, e, "Zendesk")
             end
           end
         end
+        events
+      end
 
-        WorkflowEvent.insert_all(events) if events.any?
+      # AP invoice review: decision fork on invoice >= $25k. Roughly 70% take
+      # the "Approve in NetSuite" branch, 30% are routed to Slack approvals.
+      def ap_invoice_decision_events(workspace, users)
+        ap_workflow = workspace.workflows.find_by(application: "NetSuite")
+        author = users[2] # Ravi
+        return [] unless ap_workflow && author
+
+        events = []
+        # Five review sessions per week, distributed Mon–Fri.
+        5.times do |day_offset|
+          day = (day_offset + 1).days.ago.beginning_of_day + 9.hours
+          15.times do |i|
+            t = day + (i * 5.minutes)
+            high_value = (i % 10) < 3 # ~30%
+
+            events << base_event(workspace, author, ap_workflow,
+              { kind: "navigation", target: "/ap-queue", occurred_at: t }, "NetSuite")
+            events << base_event(workspace, author, ap_workflow,
+              { kind: "click", target: "Match invoice to PO", occurred_at: t + 60.seconds,
+                payload: { decision_question: "Is invoice ≥ $25,000?",
+                           decision_branch: high_value ? "Yes" : "No" } },
+              "NetSuite")
+
+            if high_value
+              events << base_event(workspace, author, ap_workflow,
+                { kind: "navigation", target: "Slack: #ap-approvals",
+                  occurred_at: t + 4.minutes }, "Slack")
+              events << base_event(workspace, author, ap_workflow,
+                { kind: "form_submit", target: "Route to Director",
+                  occurred_at: t + 5.minutes,
+                  payload: { decision_branch: "Yes" } }, "Slack")
+            else
+              events << base_event(workspace, author, ap_workflow,
+                { kind: "click", target: "Approve in NetSuite",
+                  occurred_at: t + 2.minutes,
+                  payload: { decision_branch: "No" } }, "NetSuite")
+            end
+          end
+        end
+        events
+      end
+
+      # Customer onboarding: decision fork on MRR >= $5k between white-glove
+      # and self-serve. Roughly 40% take the white-glove path.
+      def onboarding_decision_events(workspace, users)
+        onboarding = workspace.workflows.find_by(application: "Salesforce")
+        author = users[1] # Amaka
+        return [] unless onboarding && author
+
+        events = []
+        7.times do |day_offset|
+          day = day_offset.days.ago.beginning_of_day + 14.hours
+          4.times do |i|
+            t = day + (i * 20.minutes)
+            white_glove = (i % 5) < 2 # 40%
+
+            events << base_event(workspace, author, onboarding,
+              { kind: "navigation", target: "Opportunities → Closed Won",
+                occurred_at: t }, "Salesforce")
+            events << base_event(workspace, author, onboarding,
+              { kind: "click", target: "Convert opportunity",
+                occurred_at: t + 1.minute,
+                payload: { decision_question: "Is contract MRR ≥ $5,000?",
+                           decision_branch: white_glove ? "Yes — white-glove" : "No — self-serve" } },
+              "Salesforce")
+
+            if white_glove
+              events << base_event(workspace, author, onboarding,
+                { kind: "form_submit", target: "Send Calendly kickoff",
+                  occurred_at: t + 6.minutes,
+                  payload: { decision_branch: "Yes — white-glove" } }, "Gmail")
+            else
+              events << base_event(workspace, author, onboarding,
+                { kind: "form_submit", target: "Self-Serve Welcome template",
+                  occurred_at: t + 3.minutes,
+                  payload: { decision_branch: "No — self-serve" } }, "Gmail")
+            end
+
+            events << base_event(workspace, author, onboarding,
+              { kind: "click", target: "Mark opportunity Provisioned",
+                occurred_at: t + 10.minutes }, "Salesforce")
+          end
+        end
+        events
+      end
+
+      def base_event(workspace, user, workflow, attrs, application)
+        {
+          workspace_id: workspace.id,
+          user_id: user.id,
+          workflow_id: workflow.id,
+          kind: attrs[:kind],
+          application: application,
+          target: attrs[:target],
+          payload: attrs[:payload] || {},
+          occurred_at: attrs[:occurred_at],
+          created_at: attrs[:occurred_at],
+          updated_at: attrs[:occurred_at]
+        }
       end
 
       def signature_for(title)

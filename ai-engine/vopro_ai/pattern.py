@@ -14,8 +14,8 @@ from __future__ import annotations
 import hashlib
 import re
 from collections import Counter, defaultdict
+from collections.abc import Iterable
 from datetime import datetime, timedelta
-from typing import Iterable
 
 from .models import Event, WorkflowCandidate
 

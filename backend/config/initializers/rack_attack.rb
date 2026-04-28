@@ -23,6 +23,18 @@ class Rack::Attack
     end
   end
 
+  # Password reset: 3 / 15 min / IP and 3 / hour / email — stops enumeration
+  # and email-bombing while staying friendly to legitimate forgetters.
+  throttle("password_reset/ip", limit: 3, period: 15.minutes) do |req|
+    req.ip if req.path == "/api/v1/auth/password/forgot" && req.post?
+  end
+
+  throttle("password_reset/email", limit: 3, period: 1.hour) do |req|
+    if req.path == "/api/v1/auth/password/forgot" && req.post?
+      req.params["email"].to_s.downcase.presence
+    end
+  end
+
   # Event ingestion: tight per-device limit. The agent should never legitimately
   # exceed this; flooding suggests a bug or a compromised key.
   throttle("events/device", limit: 30, period: 1.minute) do |req|
@@ -40,6 +52,20 @@ class Rack::Attack
   self.throttled_responder = lambda do |request|
     match_data = request.env["rack.attack.match_data"]
     retry_after = match_data ? match_data[:period] : 60
+    request_id = request.env["action_dispatch.request_id"] ||
+                 request.env["HTTP_X_REQUEST_ID"]
+
+    body = {
+      error: {
+        code: "rate_limited",
+        message: "Too many requests, please slow down",
+        status: 429,
+        request_id: request_id,
+        details: { retry_after: retry_after }
+      },
+      # legacy top-level retry_after for clients that key on it directly
+      retry_after: retry_after
+    }
 
     [
       429,
@@ -47,7 +73,7 @@ class Rack::Attack
         "Content-Type" => "application/json",
         "Retry-After" => retry_after.to_s
       },
-      [{ error: "Too many requests", retry_after: retry_after }.to_json]
+      [body.to_json]
     ]
   end
 

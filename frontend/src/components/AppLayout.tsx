@@ -6,13 +6,17 @@ import {
   Settings,
   Sparkles,
   CircleDot,
+  LogOut,
+  Timer,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { useAuth } from '@/auth/AuthContext';
 
 const NAV = [
   { to: '/', label: 'Overview', icon: Activity, end: true },
   { to: '/sops', label: 'SOPs', icon: BookOpen },
   { to: '/workflows', label: 'Detected workflows', icon: Sparkles },
+  { to: '/bottlenecks', label: 'Bottlenecks', icon: Timer },
   { to: '/integrations', label: 'Integrations', icon: Plug },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -50,6 +54,7 @@ export default function AppLayout() {
           ))}
         </nav>
 
+        <UserCard />
         <CaptureStatusCard />
       </aside>
 
@@ -70,9 +75,36 @@ function Logo() {
   );
 }
 
+function UserCard() {
+  const { user, logout } = useAuth();
+  if (!user) return null;
+  const initials = user.name.split(' ').map((p) => p[0]).slice(0, 2).join('');
+  return (
+    <div className="m-3 p-3 rounded-lg border border-ink-100 bg-white">
+      <div className="flex items-center gap-2.5">
+        <div className="size-8 rounded-full bg-brand-100 text-brand-700 grid place-items-center text-xs font-semibold">
+          {initials}
+        </div>
+        <div className="min-w-0">
+          <div className="text-xs font-semibold text-ink-900 truncate">{user.name}</div>
+          <div className="text-xs text-ink-400 truncate">{user.email}</div>
+        </div>
+        <button
+          type="button"
+          aria-label="Sign out"
+          onClick={logout}
+          className="ml-auto p-1 rounded text-ink-400 hover:text-ink-700 hover:bg-ink-50"
+        >
+          <LogOut className="size-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function CaptureStatusCard() {
   return (
-    <div className="m-3 p-3 rounded-lg border border-ink-100 bg-ink-50">
+    <div className="m-3 mt-0 p-3 rounded-lg border border-ink-100 bg-ink-50">
       <div className="flex items-center gap-2 mb-1">
         <CircleDot className="size-3.5 text-emerald-500 animate-pulse" />
         <span className="text-xs font-semibold text-ink-700">Capture active</span>

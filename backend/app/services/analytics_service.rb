@@ -28,13 +28,11 @@ class AnalyticsService
       end
 
       {
-        sops_total: sops_total,
-        runs_last_30d: runs_30d,
-        automation_minutes_saved: saved_minutes,
-        active_users: active_users,
-        activity: runs_by_day,
-        # Backwards-compatible alias for the older frontend chart.
-        runs_by_day: runs_by_day,
+        sopsTotal: sops_total,
+        runsLast30d: runs_30d,
+        automationMinutesSaved: saved_minutes,
+        activeUsers: active_users,
+        runsByDay: runs_by_day,
         bottlenecks: bottlenecks(workspace)
       }
     end
@@ -47,8 +45,8 @@ class AnalyticsService
                .map do |sop|
         {
           workflow: sop.title,
-          avg_duration_sec: sop.average_duration_sec,
-          outlier_duration_sec: (sop.average_duration_sec.to_i * 2.2).to_i,
+          avgDurationSec: sop.average_duration_sec.to_i,
+          outlierDurationSec: (sop.average_duration_sec.to_i * 2.2).to_i,
           occurrences: sop.runs_observed.to_i
         }
       end

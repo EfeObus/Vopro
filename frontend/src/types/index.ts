@@ -60,3 +60,43 @@ export interface BottleneckRow {
   outlierDurationSec: number;
   occurrences: number;
 }
+
+export type IntegrationProvider =
+  | 'google'
+  | 'microsoft'
+  | 'salesforce'
+  | 'zendesk'
+  | 'notion'
+  | 'slack'
+  | 'rest';
+
+export type IntegrationStatus = 'connected' | 'disconnected' | 'error';
+
+export interface Integration {
+  id: string;
+  provider: IntegrationProvider;
+  status: IntegrationStatus;
+  settings: Record<string, unknown>;
+  createdAt: string;
+}
+
+export type UserRole = 'admin' | 'editor' | 'viewer';
+
+export interface Invitation {
+  id: string;
+  email: string;
+  role: UserRole;
+  inviterId: string;
+  expiresAt: string;
+  acceptedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+  /** Only populated on the create response so the inviter can copy the link. */
+  token?: string;
+}
+
+export interface InvitationPreview {
+  email: string;
+  role: UserRole;
+  workspaceName: string;
+}

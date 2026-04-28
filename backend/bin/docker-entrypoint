@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+is_web_command() {
+  case "${1:-}" in
+    bundle|rails|puma) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Run database migrations on web boot so a fresh deploy is safe.
+# Sidekiq containers should set SKIP_DB_MIGRATE=1 to avoid double-migrating.
+if [[ "${SKIP_DB_MIGRATE:-0}" != "1" ]] && is_web_command "${1:-}"; then
+  echo "[entrypoint] running db:prepare"
+  bundle exec rails db:prepare
+
+  # Optional one-shot demo seed. Set RUN_SEED_ON_BOOT=1 in your env to enable.
+  # Uses an idempotent guard (Workspace.exists?) so re-runs are no-ops.
+  if [[ "${RUN_SEED_ON_BOOT:-0}" == "1" ]]; then
+    if bundle exec rails runner 'exit(Workspace.exists? ? 1 : 0)' >/dev/null 2>&1; then
+      echo "[entrypoint] running db:seed (RUN_SEED_ON_BOOT=1, no workspaces yet)"
+      bundle exec rails db:seed
+    else
+      echo "[entrypoint] skipping db:seed (workspaces already exist)"
+    fi
+  fi
+fi
+
+# Remove a stale pidfile from a hard-killed previous boot.
+rm -f tmp/pids/server.pid
+
+exec "$@"

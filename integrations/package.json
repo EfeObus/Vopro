@@ -1,6 +1,9 @@
 {
   "name": "@vopro/integrations",
   "version": "0.1.0",
+  "private": true,
+  "license": "SEE LICENSE IN ../LICENSE",
+  "author": "Efe Obukohwo",
   "description": "External service connectors (Google Workspace, Microsoft 365, generic REST).",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

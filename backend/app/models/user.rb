@@ -3,6 +3,7 @@ class User < ApplicationRecord
 
   belongs_to :workspace
   has_many :owned_sops, class_name: "Sop", foreign_key: :owner_id, dependent: :nullify
+  has_many :password_reset_tokens, dependent: :destroy
 
   ROLES = %w[admin editor viewer].freeze
 
@@ -11,6 +12,15 @@ class User < ApplicationRecord
   validates :role, inclusion: { in: ROLES }
 
   before_save { self.email = email.downcase if email }
+
+  # GDPR-anonymised accounts have `deleted_at` set. They must not be able to
+  # keep using a previously-issued JWT or otherwise resolve as a logged-in
+  # user.
+  scope :kept, -> { where(deleted_at: nil) }
+
+  def deleted?
+    deleted_at.present?
+  end
 
   def admin?
     role == "admin"

@@ -1,0 +1,78 @@
+# syntax=docker/dockerfile:1.6
+# ---------- builder ----------
+FROM ruby:3.2-slim-bookworm AS builder
+
+ENV LANG=C.UTF-8 \
+    BUNDLE_PATH=/usr/local/bundle \
+    BUNDLE_JOBS=4 \
+    BUNDLE_RETRY=3 \
+    BUNDLE_WITHOUT="development:test" \
+    BUNDLE_DEPLOYMENT=1 \
+    BUNDLE_FROZEN=1 \
+    RAILS_ENV=production
+
+RUN apt-get update -qq \
+ && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    git \
+    pkg-config \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY Gemfile Gemfile.lock ./
+RUN bundle config set --local without 'development test' \
+ && bundle install \
+ && rm -rf "${BUNDLE_PATH}/ruby/*/cache" \
+           "${BUNDLE_PATH}/ruby/*/gems/*/spec/*" \
+           "${BUNDLE_PATH}/ruby/*/gems/*/test/*" \
+           "${BUNDLE_PATH}/ruby/*/gems/*/doc/*"
+
+COPY . .
+
+# Pre-compile bootsnap so the runtime image starts faster.
+RUN bundle exec bootsnap precompile --gemfile app/ lib/ config/ || true
+
+# ---------- runtime ----------
+FROM ruby:3.2-slim-bookworm AS runtime
+
+ENV LANG=C.UTF-8 \
+    BUNDLE_PATH=/usr/local/bundle \
+    BUNDLE_WITHOUT="development:test" \
+    BUNDLE_DEPLOYMENT=1 \
+    BUNDLE_FROZEN=1 \
+    RAILS_ENV=production \
+    RAILS_LOG_TO_STDOUT=1 \
+    RAILS_SERVE_STATIC_FILES=0 \
+    PORT=3000 \
+    WEB_CONCURRENCY=2 \
+    RAILS_MAX_THREADS=5
+
+RUN apt-get update -qq \
+ && apt-get install -y --no-install-recommends \
+    libpq5 \
+    tini \
+    curl \
+    tzdata \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd --system --gid 1001 vopro \
+ && useradd  --system --uid 1001 --gid vopro --create-home --home-dir /home/vopro vopro
+
+WORKDIR /app
+
+COPY --from=builder /usr/local/bundle /usr/local/bundle
+COPY --from=builder --chown=vopro:vopro /app /app
+
+RUN mkdir -p tmp/pids tmp/cache log \
+ && chown -R vopro:vopro /app
+
+USER vopro
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD curl --silent --fail --max-time 4 "http://127.0.0.1:${PORT}/health" || exit 1
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/app/bin/docker-entrypoint"]
+CMD ["bundle", "exec", "puma", "-C", "config/puma.rb"]

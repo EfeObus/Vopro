@@ -1,10 +1,11 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain } from 'electron';
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, clipboard } from 'electron';
 import path from 'node:path';
 import os from 'node:os';
 import { loadConfig } from './config';
 import { EventBuffer } from './buffer';
 import { Capture } from './capture';
 import { Syncer } from './sync';
+import { Receiver } from './receiver';
 
 let tray: Tray | null = null;
 let win: BrowserWindow | null = null;
@@ -13,6 +14,7 @@ const { config, save } = loadConfig();
 const buffer = new EventBuffer(path.join(os.homedir(), '.vopro', 'events.jsonl'));
 const capture = new Capture(config, buffer);
 const syncer = new Syncer(config, buffer);
+const receiver = new Receiver(config, capture);
 
 function createWindow() {
   win = new BrowserWindow({
@@ -63,11 +65,13 @@ app.whenReady().then(() => {
   createWindow();
   buildTray();
   syncer.start();
+  receiver.start();
 
   ipcMain.handle('vopro:status', () => ({
     captureEnabled: config.capture.enabled,
     optedInApps: config.capture.optedInApps,
     deviceId: config.deviceId,
+    receiverPort: config.receiver.port,
   }));
 
   ipcMain.handle('vopro:record', (_e, input) => capture.record(input));
@@ -78,7 +82,18 @@ app.whenReady().then(() => {
     refreshMenu();
     return enabled;
   });
+  // Copy the extension pairing token to the clipboard so the user can paste
+  // it into the Chrome extension popup.
+  ipcMain.handle('vopro:copyPairingToken', () => {
+    clipboard.writeText(config.receiver.sharedSecret);
+    return true;
+  });
 });
 
-app.on('window-all-closed', (e: Electron.Event) => e.preventDefault());
-app.on('before-quit', () => syncer.stop());
+app.on('window-all-closed', () => {
+  // Keep the agent alive in the tray when the popover window is dismissed.
+});
+app.on('before-quit', () => {
+  syncer.stop();
+  receiver.stop();
+});

@@ -13,6 +13,20 @@ export default defineConfig({
     port: 5173,
     host: true,
   },
+  build: {
+    // Each page is lazy-loaded in App.tsx, but heavy shared deps still want
+    // to be split out so they're cached independently and don't bloat the
+    // initial entry chunk.
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          recharts: ['recharts', 'd3-array', 'd3-color', 'd3-format', 'd3-scale', 'd3-shape', 'd3-time', 'd3-time-format'],
+          icons: ['lucide-react'],
+          router: ['react-router-dom'],
+        },
+      },
+    },
+  },
   test: {
     globals: true,
     environment: 'jsdom',

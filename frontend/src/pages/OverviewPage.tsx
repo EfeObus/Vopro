@@ -127,7 +127,9 @@ export default function OverviewPage() {
             <AlertTriangle className="size-4 text-amber-500" />
             <h2 className="font-semibold text-ink-900">Process bottlenecks</h2>
           </div>
-          <Link to="/sops" className="text-sm text-brand-600 hover:underline">View SOPs</Link>
+          <Link to="/bottlenecks" className="text-sm text-brand-600 hover:underline">
+            See full drilldown
+          </Link>
         </div>
         <table className="w-full text-sm">
           <thead>

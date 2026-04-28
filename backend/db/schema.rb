@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_01_01_000008) do
+ActiveRecord::Schema[7.1].define(version: 2026_04_27_000004) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -40,6 +40,35 @@ ActiveRecord::Schema[7.1].define(version: 2026_01_01_000008) do
     t.datetime "updated_at", null: false
     t.index ["workspace_id", "provider"], name: "index_integrations_on_workspace_id_and_provider", unique: true
     t.index ["workspace_id"], name: "index_integrations_on_workspace_id"
+  end
+
+  create_table "invitations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "workspace_id", null: false
+    t.uuid "inviter_id"
+    t.string "email", null: false
+    t.string "role", default: "viewer", null: false
+    t.string "token", null: false
+    t.datetime "expires_at", null: false
+    t.datetime "accepted_at"
+    t.datetime "revoked_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["inviter_id"], name: "index_invitations_on_inviter_id"
+    t.index ["token"], name: "index_invitations_on_token", unique: true
+    t.index ["workspace_id", "email"], name: "index_invitations_on_workspace_id_and_email"
+    t.index ["workspace_id"], name: "index_invitations_on_workspace_id"
+  end
+
+  create_table "password_reset_tokens", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "user_id", null: false
+    t.string "token", null: false
+    t.datetime "expires_at", null: false
+    t.datetime "consumed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["token"], name: "index_password_reset_tokens_on_token", unique: true
+    t.index ["user_id", "expires_at"], name: "index_password_reset_tokens_on_user_id_and_expires_at"
+    t.index ["user_id"], name: "index_password_reset_tokens_on_user_id"
   end
 
   create_table "sop_versions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -84,6 +113,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_01_01_000008) do
     t.string "role", default: "viewer", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.datetime "deleted_at"
+    t.index ["deleted_at"], name: "index_users_on_deleted_at"
     t.index ["email"], name: "index_users_on_email", unique: true
     t.index ["workspace_id"], name: "index_users_on_workspace_id"
   end
@@ -92,7 +123,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_01_01_000008) do
     t.uuid "workspace_id", null: false
     t.uuid "user_id", null: false
     t.uuid "workflow_id"
-    t.uuid "device_id"
+    t.string "device_id"
     t.string "kind", null: false
     t.string "application"
     t.string "url"
@@ -105,6 +136,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_01_01_000008) do
     t.index ["payload"], name: "index_workflow_events_on_payload", using: :gin
     t.index ["user_id"], name: "index_workflow_events_on_user_id"
     t.index ["workflow_id"], name: "index_workflow_events_on_workflow_id"
+    t.index ["workspace_id", "device_id", "occurred_at"], name: "idx_workflow_events_on_workspace_device_time"
     t.index ["workspace_id", "occurred_at"], name: "index_workflow_events_on_workspace_id_and_occurred_at"
     t.index ["workspace_id"], name: "index_workflow_events_on_workspace_id"
   end
@@ -137,6 +169,9 @@ ActiveRecord::Schema[7.1].define(version: 2026_01_01_000008) do
   add_foreign_key "audit_logs", "users"
   add_foreign_key "audit_logs", "workspaces"
   add_foreign_key "integrations", "workspaces"
+  add_foreign_key "invitations", "users", column: "inviter_id"
+  add_foreign_key "invitations", "workspaces"
+  add_foreign_key "password_reset_tokens", "users"
   add_foreign_key "sop_versions", "sops"
   add_foreign_key "sops", "users", column: "owner_id"
   add_foreign_key "sops", "workflows"

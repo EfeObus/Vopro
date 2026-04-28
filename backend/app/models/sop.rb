@@ -10,7 +10,9 @@ class Sop < ApplicationRecord
   validates :status, inclusion: { in: STATUSES }
 
   # `steps` is a JSONB column holding an ordered array of:
-  # { id:, order:, title:, description:, application:, decision: { question:, branches: [{label:, go_to:}] } }
+  #   { id, order, title, description, application,
+  #     decision: { question, branches: [{ label, go_to_step_id, occurrences? }] } }
+  # Stored snake_case; SopSerializer.detail camelises keys for API responses.
 
   def next_version_number
     (sop_versions.maximum(:version) || 0) + 1

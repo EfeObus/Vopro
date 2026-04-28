@@ -1,26 +1,87 @@
 require "httparty"
 
-# Client for the Python ai-engine service.
+# Client for the Python ai-engine service. Uses bounded exponential backoff
+# for transient failures (timeouts, 5xx, connection refused) and bubbles up
+# 4xx without retry — those are programming errors, not network blips.
 class AiEngineClient
   include HTTParty
 
-  base_uri ENV.fetch("AI_ENGINE_URL", "http://localhost:8000")
+  # AI_ENGINE_URL is the historical name; VOPRO_AI_BASE_URL is the
+  # documented one. Honour both, with the documented one winning.
+  base_uri (ENV["VOPRO_AI_BASE_URL"].presence || ENV.fetch("AI_ENGINE_URL", "http://localhost:8000"))
   default_timeout 30
 
-  def self.detect_patterns(events:)
-    response = post("/detect", body: { events: events }.to_json,
-                              headers: { "Content-Type" => "application/json" })
-    raise "ai-engine error: #{response.code}" unless response.success?
+  MAX_RETRIES = 3
+  BASE_BACKOFF = 0.4 # seconds; 0.4, 0.8, 1.6 with jitter
 
-    response.parsed_response
+  RETRYABLE_ERRORS = [
+    Net::ReadTimeout,
+    Net::OpenTimeout,
+    Errno::ECONNREFUSED,
+    Errno::ECONNRESET,
+    SocketError,
+    HTTParty::Error
+  ].freeze
+
+  class Error < StandardError
+    attr_reader :status, :body
+
+    def initialize(message, status: nil, body: nil)
+      super(message)
+      @status = status
+      @body = body
+    end
+  end
+
+  def self.detect_patterns(events:)
+    request(:post, "/detect", body: { events: events })
   end
 
   def self.generate_sop(workflow:, events:)
-    response = post("/generate",
-                    body: { workflow: workflow, events: events }.to_json,
-                    headers: { "Content-Type" => "application/json" })
-    raise "ai-engine error: #{response.code}" unless response.success?
+    request(:post, "/generate", body: { workflow: workflow, events: events })
+  end
 
-    response.parsed_response
+  def self.request(verb, path, body: nil)
+    last_error = nil
+    attempt = 0
+
+    while attempt < MAX_RETRIES
+      attempt += 1
+      began = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+      begin
+        response = send(verb, path,
+                        body: body&.to_json,
+                        headers: { "Content-Type" => "application/json" })
+      rescue *RETRYABLE_ERRORS => e
+        last_error = e
+        wait = backoff(attempt)
+        Rails.logger.warn("[ai-engine] #{e.class} on #{verb} #{path} (attempt #{attempt}); retrying in #{wait}s")
+        sleep(wait) if attempt < MAX_RETRIES
+        next
+      end
+
+      ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - began) * 1000).round
+      Rails.logger.info("[ai-engine] #{verb.upcase} #{path} → #{response.code} in #{ms}ms (attempt #{attempt})")
+
+      if response.success?
+        return response.parsed_response
+      end
+
+      if response.code >= 500 && attempt < MAX_RETRIES
+        wait = backoff(attempt)
+        Rails.logger.warn("[ai-engine] #{response.code} on #{verb} #{path} (attempt #{attempt}); retrying in #{wait}s")
+        sleep(wait)
+        next
+      end
+
+      raise Error.new("ai-engine #{response.code}", status: response.code, body: response.body)
+    end
+
+    raise Error.new("ai-engine unreachable: #{last_error&.class}: #{last_error&.message}")
+  end
+
+  def self.backoff(attempt)
+    BASE_BACKOFF * (2**(attempt - 1)) * (0.7 + Kernel.rand * 0.6)
   end
 end

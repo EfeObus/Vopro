@@ -36,4 +36,11 @@ export interface AgentConfig {
   };
   flushIntervalMs: number;
   batchSize: number;
+  // Local HTTP receiver the browser extension and other capture sources POST to.
+  receiver: {
+    enabled: boolean;
+    port: number;
+    // Shared secret the extension presents in X-Vopro-Token. Generated on first run.
+    sharedSecret: string;
+  };
 }

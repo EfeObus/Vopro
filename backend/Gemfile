@@ -7,6 +7,7 @@ gem "puma", "~> 6.4"
 gem "pg", "~> 1.5"
 gem "redis", "~> 5.0"
 gem "sidekiq", "~> 7.2"
+gem "sidekiq-cron", "~> 1.12"
 gem "rack-cors"
 gem "rack-attack", "~> 6.7"
 # Pin to 2.x — connection_pool 3.0 broke Rails 7.1's RedisCacheStore API.
@@ -15,6 +16,11 @@ gem "jwt"
 gem "bcrypt", "~> 3.1"
 gem "httparty"
 gem "lograge", "~> 0.14"
+gem "secure_headers", "~> 7.0"
+gem "sentry-ruby", "~> 5.17"
+gem "sentry-rails", "~> 5.17"
+gem "sentry-sidekiq", "~> 5.17"
+gem "stackprof", require: false
 gem "tzinfo-data", platforms: %i[mingw mswin x64_mingw jruby]
 gem "bootsnap", require: false
 

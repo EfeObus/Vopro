@@ -1,6 +1,9 @@
 {
   "name": "vopro-agent",
   "version": "0.1.0",
+  "private": true,
+  "license": "SEE LICENSE IN ../LICENSE",
+  "author": "Efe Obukohwo",
   "description": "Vopro desktop capture agent (Electron + TypeScript)",
   "main": "dist/main.js",
   "scripts": {

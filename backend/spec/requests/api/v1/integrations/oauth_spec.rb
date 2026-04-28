@@ -4,6 +4,7 @@ RSpec.describe "Api::V1::Integrations::OAuth", type: :request do
   let(:workspace) { create(:workspace) }
   let(:user)      { create(:user, workspace: workspace) }
   let(:headers)   { auth_headers_for(user) }
+  let(:json_headers) { headers.merge("Accept" => "application/json") }
 
   describe "GET /api/v1/integrations/:provider/start" do
     it "returns an authorize URL with a state parameter" do
@@ -23,15 +24,15 @@ RSpec.describe "Api::V1::Integrations::OAuth", type: :request do
   end
 
   describe "GET /api/v1/integrations/:provider/callback" do
-    it "rejects unknown state values" do
-      get "/api/v1/integrations/google/callback",
-          params: { code: "abc", state: "wrong" },
-          headers: headers
-      expect(response).to have_http_status(:bad_request)
+    it "renders the HTML close-window page on an unknown state value" do
+      get "/api/v1/integrations/google/callback", params: { code: "abc", state: "wrong" }
+      expect(response).to have_http_status(:ok)
+      expect(response.media_type).to eq("text/html")
+      expect(response.body).to include("Couldn")
+      expect(response.body).to include("postMessage")
     end
 
-    it "creates the Integration record on a valid callback" do
-      # Prime the cache with a known state
+    it "creates the Integration record on a valid callback (HTML response)" do
       state = "valid-state"
       Rails.cache.write("vopro:oauth:state:#{state}",
                         { user_id: user.id, workspace_id: workspace.id, provider: "google" },
@@ -42,13 +43,35 @@ RSpec.describe "Api::V1::Integrations::OAuth", type: :request do
       allow(IntegrationConnectorBridge).to receive(:for).with("google").and_return(stub)
 
       get "/api/v1/integrations/google/callback",
-          params: { code: "auth-code", state: state },
-          headers: headers
+          params: { code: "auth-code", state: state }
 
       expect(response).to have_http_status(:ok)
+      expect(response.media_type).to eq("text/html")
+      expect(response.body).to include("Connection complete")
+
       integration = workspace.integrations.find_by(provider: "google")
       expect(integration).to be_present
       expect(integration.status).to eq("connected")
+    end
+
+    it "honours Accept: application/json for programmatic callers" do
+      state = "valid-state"
+      Rails.cache.write("vopro:oauth:state:#{state}",
+                        { user_id: user.id, workspace_id: workspace.id, provider: "google" },
+                        expires_in: 5.minutes)
+
+      stub = instance_double(IntegrationConnectorBridge::GoogleConnector,
+                             exchange_code: { "access_token" => "tok", "scope" => "drive" })
+      allow(IntegrationConnectorBridge).to receive(:for).with("google").and_return(stub)
+
+      get "/api/v1/integrations/google/callback",
+          params: { code: "auth-code", state: state },
+          headers: json_headers
+
+      expect(response).to have_http_status(:ok)
+      expect(response.media_type).to eq("application/json")
+      body = JSON.parse(response.body)
+      expect(body["status"]).to eq("connected")
     end
   end
 end

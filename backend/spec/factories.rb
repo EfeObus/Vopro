@@ -60,4 +60,10 @@ FactoryBot.define do
     status { "disconnected" }
     settings { {} }
   end
+
+  factory :invitation do
+    workspace
+    sequence(:email) { |n| "invitee#{n}@example.com" }
+    role { "viewer" }
+  end
 end

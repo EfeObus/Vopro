@@ -1,0 +1,84 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-vopro}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: ${POSTGRES_DB:-vopro_production}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vopro}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-vopro}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-vopro_production}
+      REDIS_URL: redis://redis:6379/0
+      RAILS_ENV: production
+      RAILS_MASTER_KEY: ${RAILS_MASTER_KEY:?RAILS_MASTER_KEY must be set}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      AI_ENGINE_URL: http://ai-engine:8000
+      VOPRO_AI_BASE_URL: http://ai-engine:8000
+      SIDEKIQ_WEB_USER: ${SIDEKIQ_WEB_USER:?SIDEKIQ_WEB_USER must be set}
+      SIDEKIQ_WEB_PASSWORD: ${SIDEKIQ_WEB_PASSWORD:?SIDEKIQ_WEB_PASSWORD must be set}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  sidekiq:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    command: ["bundle", "exec", "sidekiq", "-C", "config/sidekiq.yml"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-vopro}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-vopro_production}
+      REDIS_URL: redis://redis:6379/0
+      RAILS_ENV: production
+      RAILS_MASTER_KEY: ${RAILS_MASTER_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      AI_ENGINE_URL: http://ai-engine:8000
+      VOPRO_AI_BASE_URL: http://ai-engine:8000
+      SKIP_DB_MIGRATE: "1"
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    depends_on:
+      backend:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ai-engine:
+    build:
+      context: ./ai-engine
+    command: ["uvicorn", "vopro_ai.api:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      VOPRO_LLM_PROVIDER: ${VOPRO_LLM_PROVIDER:-deterministic}
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

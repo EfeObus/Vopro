@@ -3,7 +3,9 @@ class WorkflowEvent < ApplicationRecord
   belongs_to :user
   belongs_to :workflow, optional: true
 
-  KINDS = %w[click input navigation focus blur form_submit shortcut copy paste open close].freeze
+  # Single source of truth for valid event kinds lives in EventKind so the
+  # ingest controller and the AR validation can never drift apart.
+  KINDS = EventKind::ALL
 
   validates :kind, inclusion: { in: KINDS }
   validates :occurred_at, presence: true

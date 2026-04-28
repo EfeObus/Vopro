@@ -1,7 +1,21 @@
 # Contributing to Vopro
 
-Thanks for your interest in improving Vopro! This guide covers how to set up
-your environment, make changes, and submit them for review.
+Vopro is **proprietary, all-rights-reserved software** — see [`LICENSE`](LICENSE).
+This document is for **authorised contributors** (employees, contractors, and
+parties operating under a signed agreement). It is **not** an invitation to
+the general public to fork or contribute.
+
+If you do not have a signed agreement with the Vopro copyright holder and
+would like to contribute, contact **legal@vopro.com** first. Pull requests
+opened without prior authorization will be closed without review.
+
+By submitting any change to this repository you confirm that:
+
+1. You are authorised to contribute under the Vopro Proprietary Software
+   License or a separate written agreement;
+2. The change is your own original work or you have the right to submit it;
+3. You assign all right, title, and interest in the change to the Vopro
+   copyright holder, who may relicense it at their sole discretion.
 
 ## Ground rules
 
