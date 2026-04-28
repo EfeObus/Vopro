@@ -18,9 +18,12 @@ import {
 } from '@/data/mock';
 import { clearAuth, readToken, type AuthUser } from '@/auth/AuthContext';
 
+/** Empty string = same-origin (use Vite dev proxy to Rails — see vite.config.ts). */
 const BASE = import.meta.env.VITE_API_BASE_URL ?? '';
-// Only fall back to mocks in tests (no API base configured) or when explicitly opted in.
-const USE_MOCK = import.meta.env.MODE === 'test' || !BASE;
+// Vitest has no backend; optional offline demos via VITE_USE_MOCK_API=true.
+// Do NOT treat empty BASE as mock in development — that breaks proxy-based dev.
+const USE_MOCK =
+  import.meta.env.MODE === 'test' || import.meta.env.VITE_USE_MOCK_API === 'true';
 
 export interface AnalyticsOverview {
   sopsTotal: number;

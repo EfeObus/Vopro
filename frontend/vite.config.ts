@@ -12,6 +12,14 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    // Same-origin `/api/*` → Rails so the browser never runs CORS preflight in dev.
+    // Pair with `VITE_API_BASE_URL=` (empty) in .env — see .env.example.
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:3000',
+        changeOrigin: true,
+      },
+    },
   },
   build: {
     // Each page is lazy-loaded in App.tsx, but heavy shared deps still want

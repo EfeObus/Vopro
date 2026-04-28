@@ -20,30 +20,11 @@ module Vopro
 
     config.active_job.queue_adapter = :sidekiq
 
-    # Browser treats localhost vs 127.0.0.1 as different origins. Many developers
-    # still have ALLOWED_ORIGINS=http://localhost:5173 only in .env — so in
-    # development we always merge both Vite URLs even when .env omits 127.0.0.1.
-    cors_origins =
-      ENV.fetch("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
-          .split(",")
-          .map(&:strip)
-          .reject(&:empty?)
-
-    if Rails.env.development?
-      %w[http://localhost:5173 http://127.0.0.1:5173].each do |dev_origin|
-        cors_origins << dev_origin unless cors_origins.include?(dev_origin)
-      end
-    end
-
-    config.middleware.insert_before 0, Rack::Cors do
-      allow do
-        origins cors_origins
-        resource "*",
-                 headers: :any,
-                 expose: %w[Authorization],
-                 methods: %i[get post put patch delete options head]
-      end
-    end
+    # Rack::Cors is registered in config/initializers/zz_rack_cors.rb **after**
+    # SecureHeaders loads so we can insert_before SecureHeaders::Middleware.
+    # Putting Cors in this file with insert_before 0 still ends up *inside*
+    # SecureHeaders because the gem inserts itself outermost during boot — which
+    # broke browser preflights (no Access-Control-Allow-Origin on OPTIONS).
 
     config.middleware.use Rack::Attack
 
